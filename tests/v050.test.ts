@@ -13,7 +13,11 @@ function memoryStorage(): VaultStorage & { rows: Map<string, { cipher: string; e
 }
 
 // Reversible stand-in for safeStorage: "encrypts" by reversing bytes.
-const fakeCipher = { isAvailable: () => true, encrypt: (plain: string) => Buffer.from(plain).reverse(), decrypt: (cipher: Buffer) => Buffer.from(cipher).reverse().toString() }
+const fakeCipher = {
+  isAvailable: async () => true,
+  encrypt: async (plain: string) => Buffer.from(plain).reverse(),
+  decrypt: async (cipher: Buffer) => ({ value: Buffer.from(cipher).reverse().toString(), reEncrypt: false }),
+}
 
 afterEach(() => setKnownSecrets([]))
 
@@ -39,8 +43,21 @@ describe('vault', () => {
   it('validates names and refuses to store without OS encryption', async () => {
     const vault = new Vault(fakeCipher, memoryStorage())
     await expect(vault.set('bad name', 'x', true)).rejects.toThrow(/Name/)
-    const noCrypto = new Vault({ ...fakeCipher, isAvailable: () => false }, memoryStorage())
+    const noCrypto = new Vault({ ...fakeCipher, isAvailable: async () => false }, memoryStorage())
     await expect(noCrypto.set('OK', 'value', true)).rejects.toThrow(/encryption/)
+  })
+})
+
+describe('vault key rotation', () => {
+  it('re-encrypts a value when the OS asks for it', async () => {
+    const storage = memoryStorage()
+    let rotated = false
+    const vault = new Vault({ ...fakeCipher, decrypt: async (cipher) => ({ value: Buffer.from(cipher).reverse().toString(), reEncrypt: !rotated && (rotated = true) }) }, storage)
+    await vault.set('K', 'value-1234', true)
+    const before = storage.rows.get('K')!.cipher
+    storage.rows.set('K', { cipher: before + '', env: true })
+    expect(await vault.resolve('K')).toBe('value-1234')
+    expect(rotated).toBe(true)
   })
 })
 

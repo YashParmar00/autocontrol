@@ -267,7 +267,7 @@ export function AssistantView(props: {
           </button>
         )}
         <textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={onKeyDown} rows={2} maxLength={8000}
-          placeholder={settings.model ? 'Kuch bhi poochho… (Enter = send · Shift+Enter = new line · Win+H = bol ke likho)' : 'Pehle Ollama model select karo'} disabled={!settings.model} />
+          placeholder={settings.model ? (props.compact ? 'Poochho… (Win+H = bolo)' : 'Kuch bhi poochho… (Enter = send · Shift+Enter = new line · Win+H = bol ke likho)') : 'Pehle Ollama model select karo'} disabled={!settings.model} />
         <button type="submit" className="primary-button" disabled={!draft.trim() || !!activeRequest || !settings.model}>
           {activeRequest ? <LoaderCircle size={16} className="spin" /> : <SendHorizontal size={16} />}
         </button>

@@ -87,7 +87,9 @@ export function browserTools(browser: BrowserCapability): AgentTool[] {
         if (!lastTab) lastTab = await browser.getContext()
         const preview = fields.map((field) => {
           const vault = VAULT_REF.exec(field.value)
-          return `${field.ref} · ${fieldLabel(field.ref)} ← ${vault ? `🔒 vault secret "${vault[1]}" (hidden)` : JSON.stringify(field.value.slice(0, 120))}`
+          const sensitive = lastTab?.fields.find((candidate) => candidate.ref === field.ref)?.sensitive
+          const note = !vault && sensitive ? '   ⚠ sensitive field — will be refused (only vault secrets allowed)' : ''
+          return `${field.ref} · ${fieldLabel(field.ref)} ← ${vault ? `🔒 vault secret "${vault[1]}" (hidden)` : JSON.stringify(field.value.slice(0, 120))}${note}`
         }).join('\n')
         return {
           category: 'submit_form',

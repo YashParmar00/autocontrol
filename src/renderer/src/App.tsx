@@ -123,7 +123,7 @@ function App() {
         <div className="nav-label tools-label">SYSTEM</div>
         <nav className="nav-list">
           <button className={`nav-item ${view === 'activity' ? 'active' : ''}`} onClick={() => setView('activity')}><ShieldCheck size={17} /><span>Security & activity</span></button>
-          <div className="nav-item nav-planned"><Monitor size={17} /><span>Screen awareness</span><span className="coming-soon">NEXT</span></div>
+
         </nav>
         <div className="sidebar-bottom">
           <div className="privacy-card"><div className="privacy-icon"><ShieldCheck size={16} /></div><div><strong>Local-first by design</strong><span>Project context stays on this device.</span></div></div>
@@ -149,8 +149,8 @@ function App() {
           {error && <div className="error-banner"><X size={16} /><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error"><X size={14} /></button></div>}
 
           <section className="hero-card">
-            <div className="hero-main"><div className="hero-icon"><BrainCircuit size={22} /></div><div><div className="hero-kicker">ASSISTANT STATUS <span className="status-dot" /></div><h2>{ollama?.connected ? 'Local AI brain is online' : 'Project context is ready — start Ollama for AI'}</h2><p>Assistant project files khud padhta hai (secrets ke bina). Screen observation aur actions agle milestone mein.</p><button className="hero-cta" onClick={() => setView('assistant')}>Open assistant <ArrowUpRight size={13} /></button></div></div>
-            <div className="hero-side"><div className="mode-label">CURRENT MODE</div><div className="mode-value"><span className="mode-dot" /> Read-only AI tools</div><div className="mode-footnote">Every action is permission-checked</div></div>
+            <div className="hero-main"><div className="hero-icon"><BrainCircuit size={22} /></div><div><div className="hero-kicker">ASSISTANT STATUS <span className="status-dot" /></div><h2>{ollama?.connected ? 'Local AI brain is online' : 'Project context is ready — start Ollama for AI'}</h2><p>Code padhna, edit karna (approval se), scripts chalana, screen aur Chrome tab dekhna — sab permission engine ke through.</p><button className="hero-cta" onClick={() => setView('assistant')}>Open assistant <ArrowUpRight size={13} /></button></div></div>
+            <div className="hero-side"><div className="mode-label">CURRENT MODE</div><div className="mode-value"><span className="mode-dot" /> Agent with approvals</div><div className="mode-footnote">Every action is permission-checked</div></div>
           </section>
 
           <section className="section-heading"><div><h2>Workspace overview</h2><p>Your local project and runtime at a glance.</p></div><span className="updated-label">{loading ? 'Loading workspace…' : 'Updated just now'}</span></section>
@@ -195,7 +195,7 @@ function App() {
                 {!ollama?.connected && <div className="runtime-help">Start the Ollama app, then check again. No cloud AI calls are made by this check.</div>}
               </article>
 
-              <article className="safety-panel"><div className="safety-title"><ShieldCheck size={16} /><strong>Safety boundaries are on</strong></div><p>Secrets project scan aur AI context dono se bahar hain. AI abhi sirf files padh sakta hai — click, type, form submit ya shell commands nahi.</p><div className="safety-footer"><span><CheckCircle2 size={13} /> Local project scan</span><span><CheckCircle2 size={13} /> Human-controlled</span></div></article>
+              <article className="safety-panel"><div className="safety-title"><ShieldCheck size={16} /><strong>Safety boundaries are on</strong></div><p>Secrets AI ko kabhi nahi dikhte. Har change ka checkpoint banta hai (Undo), external actions approval maangte hain, aur payments hamesha aapke haath mein.</p><div className="safety-footer"><span><CheckCircle2 size={13} /> Local project scan</span><span><CheckCircle2 size={13} /> Human-controlled</span></div></article>
             </div>
           </section>
           <footer className="page-footer"><span>DEV COMPANION · LOCAL-FIRST DEVELOPMENT ASSISTANT</span><span><Monitor size={12} /> Running on this device</span></footer>

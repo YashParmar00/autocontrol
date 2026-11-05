@@ -1,30 +1,20 @@
-# Implementation status
+# Implementation status — v0.5.0 (2026-11-05)
 
-## v0.2.0 — AI Brain (2026-11-05)
+## Verified
+- `npm ci`, `npm run typecheck`, `npm run build`, `npm audit` (0 vulnerabilities).
+- `npm test`: 57 tests — permission engine, safe read/write paths, diff, approvals, process manager (real npm scripts, timeout, kill), redaction, browser bridge (real WebSocket, origin + token checks), browser/screen tools, vault.
+- End-to-end in the real Electron app (headless Linux, Xvfb) against a scripted Ollama-compatible server:
+  - Supervised: AI read `src/server.js` → edit approval with diff (file unchanged until Approve) → file changed → test script approval → `PASS` → `.env` read blocked → Undo restored the file.
+  - Real Chromium + the extension: paired with token, AI read the tab, filled the URL field after approval, **did not** fill the password field, "Pay now" was blocked, "Create Webhook" clicked after approval. No secret reached the model.
+  - Screen awareness: preview capture, `look_at_screen` and the camera-attach button sent a real screenshot to the vision model.
+  - Floating mini window opens, shares history, IPC trusted.
+  - Terminal: started `dev`, output shown; STOP aborted the AI request and killed the process.
+  - Vault correctly refuses to store without OS encryption.
 
-### Delivered
-- **Local AI chat** via Ollama `/api/chat` (loopback `127.0.0.1:11434` only), streamed token-by-token into an Assistant view.
-- **Automatic project context** (`src/main/context-builder.ts`): project summary, stack, scripts, pending tasks, file tree, key files (`package.json`, `README.md`) and files relevant to the question are injected into the system prompt. Budgeted (~14k chars) for 8 GB RAM machines.
-- **Read-only agent tools** (`src/main/agent.ts`, `src/main/project-tools.ts`): `list_files`, `read_file`, `search_code`. Up to 4 tool rounds per answer. Models without tool support automatically fall back to context-only answers.
-- **Permission engine** (`src/main/permission-engine.ts`): Guide / Supervised / Autonomous modes, fail-closed for unknown actions, payments always denied.
-- **Emergency STOP**: aborts every running AI request and tool loop.
-- **Audit log** of every tool call and mode change (SQLite, capped at 1000 rows), visible in *Security & activity*.
-- **Chat history per project** in local SQLite, secrets redacted before storage and before being sent to the model.
-- Secret protection for AI reads: `.env*` (except `.env.example`), keys, certs, `.ssh`, `.aws`, `.npmrc`, `.git`, credentials files are blocked; path traversal, absolute paths and symlink escapes rejected; inline tokens redacted.
-- Fixed v0.1.0 type error (`isMainFrame`) — `npm run typecheck` now passes.
+## Not verified here
+- A real Ollama model (registry blocked in the build environment). Answer quality depends on the model.
+- Windows itself: DPAPI vault encryption, content protection, `.cmd` spawning, NSIS installer. The CI workflow runs tests on `windows-latest`; the installer workflow builds the `.exe`.
 
-### Verified in the build environment (Linux)
-- `npm install`, `npm run typecheck`, `npm run build`: pass.
-- `npm test`: 26 tests pass (permission engine, safe paths, context builder, NDJSON streaming, agent loop, emergency stop, tool fallback).
-- Electron app launched headless (Xvfb) against an Ollama-compatible mock server: overview, assistant chat with a tool round + streamed answer, and audit view rendered with no console errors; `require` not exposed to the renderer.
-
-### Not verified
-- A real Ollama model (no access to the Ollama registry from the build environment) — answer quality depends on the model you pull.
-- Windows-specific run and the NSIS installer.
-
-## Next milestone (v0.3.0)
-1. Supervised file edits: AI proposes a diff → developer approves → write + Git checkpoint.
-2. Approval prompts in the UI for `ask` decisions.
-3. Terminal observer (read output of `npm run dev`) and running test scripts.
-4. Screen awareness (Electron desktop capturer, event-based, password fields masked).
-5. Chrome extension for reading the active tab (e.g. Razorpay dashboard).
+## Recommended models (8 GB RAM)
+- Chat + tools: `qwen3:4b` (or `qwen3:1.7b` if slow)
+- Vision: `qwen3-vl:2b`

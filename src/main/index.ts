@@ -38,9 +38,12 @@ function emitChat(event: ChatStreamEvent): void {
 
 const vault = new Vault({
   // On Linux without a keyring Electron falls back to a hard-coded key ("basic_text"): treat that as unavailable.
-  isAvailable: () => safeStorage.isEncryptionAvailable() && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
-  encrypt: (plain) => safeStorage.encryptString(plain),
-  decrypt: (cipher) => safeStorage.decryptString(cipher),
+  isAvailable: async () => (await safeStorage.isAsyncEncryptionAvailable()) && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
+  encrypt: (plain) => safeStorage.encryptStringAsync(plain),
+  decrypt: async (cipher) => {
+    const { result, shouldReEncrypt } = await safeStorage.decryptStringAsync(cipher)
+    return { value: result, reEncrypt: shouldReEncrypt }
+  },
 }, vaultStorage)
 
 async function refreshKnownSecrets(): Promise<void> {
@@ -48,7 +51,7 @@ async function refreshKnownSecrets(): Promise<void> {
 }
 
 async function vaultInfo() {
-  return { available: vault.available(), entries: await vault.entries() }
+  return { available: await vault.available(), entries: await vault.entries() }
 }
 
 const processes = new ProcessManager()

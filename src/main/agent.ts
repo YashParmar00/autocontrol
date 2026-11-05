@@ -244,7 +244,10 @@ export async function executeTool(call: OllamaToolCall, tools: AgentTool[], ctx:
   const record = (outcome: ToolAuditRecord['outcome']): ToolAuditRecord => ({ category: action.category, tool: name, summary, decision, outcome })
 
   if (decision === 'deny') {
-    return { result: `Blocked: "${name}" is not allowed in ${ctx.mode} mode. Tell the developer the exact steps to do it themselves.`, record: record('blocked') }
+    const reason = action.category === 'payment'
+      ? 'Payments and purchases are always done by the developer personally. Tell them which button to click; never retry.'
+      : `"${name}" is not allowed in ${ctx.mode} mode. Tell the developer the exact steps to do it themselves.`
+    return { result: `Blocked: ${reason}`, record: record('blocked') }
   }
   if (decision === 'ask') {
     const approved = await ctx.requestApproval({ tool: name, category: action.category, summary, preview: action.preview ?? summary })

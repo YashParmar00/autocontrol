@@ -15,9 +15,10 @@ import type { VaultEntry } from '../shared/contracts'
 export const VAULT_NAME = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/
 
 export type Cipher = {
-  isAvailable: () => boolean
-  encrypt: (plain: string) => Buffer
-  decrypt: (cipher: Buffer) => string
+  isAvailable: () => Promise<boolean>
+  encrypt: (plain: string) => Promise<Buffer>
+  /** `reEncrypt` is true when the OS key was rotated and the value should be stored again. */
+  decrypt: (cipher: Buffer) => Promise<{ value: string; reEncrypt: boolean }>
 }
 
 export type VaultStorage = {
@@ -29,8 +30,8 @@ export type VaultStorage = {
 export class Vault {
   constructor(private cipher: Cipher, private storage: VaultStorage) {}
 
-  available(): boolean {
-    return this.cipher.isAvailable()
+  async available(): Promise<boolean> {
+    try { return await this.cipher.isAvailable() } catch { return false }
   }
 
   async entries(): Promise<VaultEntry[]> {
@@ -40,8 +41,8 @@ export class Vault {
   async set(name: string, value: string, env: boolean): Promise<void> {
     if (!VAULT_NAME.test(name)) throw new Error('Name: letters, numbers, _ . - only (e.g. RAZORPAY_KEY_SECRET).')
     if (!value || value.length > 8_192) throw new Error('Value must be 1–8192 characters.')
-    if (!this.available()) throw new Error('OS encryption is not available on this computer, so secrets are not stored.')
-    await this.storage.put(name, this.cipher.encrypt(value).toString('base64'), env)
+    if (!(await this.available())) throw new Error('OS encryption is not available on this computer, so secrets are not stored.')
+    await this.storage.put(name, (await this.cipher.encrypt(value)).toString('base64'), env)
   }
 
   async remove(name: string): Promise<void> {
@@ -51,16 +52,27 @@ export class Vault {
   /** Decrypt one secret for use inside the main process only. */
   async resolve(name: string): Promise<string | null> {
     const entry = (await this.storage.list()).find((candidate) => candidate.name === name)
-    if (!entry || !this.available()) return null
-    try { return this.cipher.decrypt(Buffer.from(entry.cipher, 'base64')) } catch { return null }
+    if (!entry || !(await this.available())) return null
+    return this.decryptEntry(entry)
+  }
+
+  private async decryptEntry(entry: { name: string; cipher: string; env: boolean }): Promise<string | null> {
+    try {
+      const { value, reEncrypt } = await this.cipher.decrypt(Buffer.from(entry.cipher, 'base64'))
+      if (reEncrypt) await this.storage.put(entry.name, (await this.cipher.encrypt(value)).toString('base64'), entry.env)
+      return value
+    } catch {
+      return null
+    }
   }
 
   /** All decrypted values (for the redactor) — never leaves the main process. */
   async allValues(): Promise<Array<{ name: string; value: string; env: boolean }>> {
-    if (!this.available()) return []
+    if (!(await this.available())) return []
     const result = []
     for (const entry of await this.storage.list()) {
-      try { result.push({ name: entry.name, value: this.cipher.decrypt(Buffer.from(entry.cipher, 'base64')), env: entry.env }) } catch { /* unreadable on this machine */ }
+      const value = await this.decryptEntry(entry)
+      if (value !== null) result.push({ name: entry.name, value, env: entry.env })
     }
     return result
   }

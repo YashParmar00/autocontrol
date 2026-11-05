@@ -1,108 +1,66 @@
 # Dev Companion
 
-A local-first AI development companion for Windows. The product goal is to understand the developer's active project and workflow, keep useful context, and perform approved work while the developer remains in control.
+A local-first AI developer companion for Windows. It understands your project, your terminal, your screen and your Chrome tab, does the work you approve, and keeps passwords and API keys away from the AI.
 
-## What's new in 0.2.0 — AI Brain
+## Features (v0.5.0)
 
-- **Assistant** tab: chat with a local Ollama model that already knows your project (no screenshots / pasting).
-- AI reads files itself with read-only tools (`list_files`, `read_file`, `search_code`); `.env`, keys and credentials are never shared.
-- Guide / Supervised / Autonomous modes, emergency **STOP**, and an audit log of every AI action.
+| | |
+|---|---|
+| **Assistant** | Chat with a local Ollama model that already knows your project. Streams answers; history per project. |
+| **Code** | Reads files itself, edits with a diff you approve, every edit has an **Undo** checkpoint. |
+| **Terminal** | Runs package.json scripts (tests, builds, dev servers), reads their output, installs packages after approval. |
+| **Screen** | 📷 On request, a local vision model looks at your screen (default OFF). |
+| **Chrome** | Extension lets the AI read the active tab, fill fields and click buttons you approve. Payments are never clicked. |
+| **Vault** | Store API keys encrypted (DPAPI). The AI uses them by name (`{{vault:NAME}}`, env vars) and never sees them. |
+| **Control** | Guide / Supervised / Autonomous modes, approval cards, **STOP**, audit log. |
+| **Mini** | Floating always-on-top assistant: **Ctrl+Shift+Space**. |
 
-### Quick start with AI
+## Quick start
 
 ```bash
-# 1. Install Ollama from https://ollama.com and pull a model
-ollama pull qwen3:4b        # 8 GB RAM: qwen3:1.7b or llama3.2:3b are lighter
-# 2. Run the app
+# 1. Ollama (https://ollama.com) + models
+ollama pull qwen3:4b       # chat + tools (8 GB RAM: qwen3:1.7b is lighter)
+ollama pull qwen3-vl:2b    # optional, for screen awareness
+
+# 2. App
 npm install
 npm run dev
 ```
 
-Select your project folder on **Overview**, then open **Assistant**. Tool-calling models (qwen3, llama3.1+, llama3.2) can browse your code; other models still get the automatic project context.
+1. **Overview** → Select project folder.
+2. **Assistant** → pick mode (start with **Supervised**) and ask.
+3. Optional: **Security & activity** → turn on Screen awareness / Chrome bridge, add secrets to the Vault.
+4. Chrome extension: `chrome://extensions` → Developer mode → Load unpacked → `apps/browser-extension` → paste the pairing token.
 
-## Foundation (0.1.0)
+Windows installer: GitHub → Actions → **Windows installer** → Run workflow → download the artifact (or push a `v*` tag for a release).
 
-- Electron desktop shell with a React + TypeScript renderer.
-- Hardened renderer boundary: `contextIsolation`, `sandbox`, `nodeIntegration: false`, strict IPC allow-list, sender validation, and navigation/window-open restrictions.
-- User-selected project folder scanning (no background drive crawling).
-- Project metadata and file tree inspection, with common build folders and secret-like files excluded.
-- Local task notes persisted in a SQLite database under Electron's per-user app data directory (`memory.sqlite`). The database is local-only and contains project metadata and notes, not credentials.
-- Ollama health check against `127.0.0.1:11434` only. It reads model names, never prompts a model.
-- No screen capture, browser control, terminal execution, credential access, or autonomous actions in this starter.
+See [docs/SECURITY.md](docs/SECURITY.md) for the full security model and [docs/IMPLEMENTATION-STATUS.md](docs/IMPLEMENTATION-STATUS.md) for what was tested.
 
-## Requirements
+## Development
 
-- Windows 10/11 x64 (development tested target; not yet validated on this container)
-- Node.js 22.12+ and npm
-- Ollama is optional. Install it separately to use the local runtime check.
-
-## Setup
-
-1. Install Node.js 22.12 or newer (64-bit) and npm.
-2. Open this folder in a terminal.
-3. Install dependencies and launch the desktop app:
+Requirements: Windows 10/11 x64 (also runs on macOS/Linux), Node.js 22.12+.
 
 ```bash
-npm install
-npm run dev
-```
-
-On Windows, you can also double-click `START-WINDOWS.cmd`. It installs dependencies and starts the app.
-
-Type-check and test:
-
-```bash
+npm run dev         # app with hot reload (or double-click START-WINDOWS.cmd)
 npm run typecheck
 npm test
-```
-
-Build the desktop bundle:
-
-```bash
 npm run build
+npm run package:win # Windows installer (needs Windows, or use the GitHub Actions workflow)
 ```
 
-Create a Windows installer:
+| Folder | What |
+|---|---|
+| `src/main` | Electron main: agent loop, tools, permission engine, vault, bridge, processes, SQLite store |
+| `src/preload` | Typed, narrow IPC bridge |
+| `src/renderer` | React UI (main window + `#mini` floating window) |
+| `src/shared` | Types shared by main and UI |
+| `apps/browser-extension` | Chrome MV3 extension (bridge) |
+| `tests` | Vitest suites |
 
-```bash
-npm run package:win
-```
+## Safety rules (enforced in code)
 
-## Project scan security
-
-The first version only scans a folder that the user explicitly selects. It does not follow symbolic links and skips `node_modules`, `.git`, build outputs, `.env*`, private-key extensions, and common credential-like filenames. It reads only the root `package.json` for dependency and script-name detection; it does not read `.env` or source-code contents. Task notes are scrubbed for common named secrets, provider-token formats, bearer tokens, and private-key blocks before they are written to SQLite. This is a best-effort filter, not a reason to paste credentials into notes.
-
-This is a conservative baseline, not a guarantee that every possible secret naming convention is detected. Do not add real secrets to the repository.
-
-## Ollama
-
-The connection check calls `GET http://127.0.0.1:11434/api/tags`. It does not use cloud AI. No AI inference or chat prompt is wired yet. The dashboard status is only a connectivity check.
-
-## Architecture roadmap
-
-1. **Foundation (current):** desktop shell, project context, task memory, local runtime status.
-2. **Context intelligence:** user-enabled screen snapshots, Windows UI Automation, and a Chrome extension with explicit per-site permissions.
-3. **Agent runtime:** task planner, policy-gated tools, code diffs, sandboxed terminal runner, and verification.
-4. **Security hardening:** Windows Credential Manager/DPAPI integration, secret redaction, audit history, Git checkpoints, and emergency stop.
-5. **Memory upgrade:** schema migrations, decision history, and local retrieval on top of SQLite.
-
-## Non-negotiable safety rules
-
-- Never send `.env`, passwords, API tokens, browser cookies, private keys, or OTPs to a model.
-- Browser password fields and sensitive regions must be excluded from context collection.
-- File edits, package installs, shell commands, form submissions, email sends, payments, and deployments need separate permissions.
-- Payments and production deployment always require explicit user confirmation.
-- AI never receives unrestricted shell or filesystem access.
-
-## Repository status
-
-This workspace was initialized as a local Git repository for the starter implementation. A remote GitHub repository still needs to be created from the user's GitHub account, then configured as `origin` and pushed.
-
-### Connect to GitHub
-
-Create an empty repository named `dev-companion` in your GitHub account (do not add a README or license there), then run this from the project folder:
-
-```bash
-git remote add origin https://github.com/<your-username>/dev-companion.git
-git push -u origin main
-```
+- `.env`, keys, passwords, tokens, cookies and OTPs never reach the model.
+- Password/OTP/card fields are never read or filled with AI text.
+- Edits, scripts, installs, form fills/clicks need approval in Supervised mode; external actions always ask.
+- Payments are never automated.
+- The AI never gets a raw shell or unrestricted file access.
