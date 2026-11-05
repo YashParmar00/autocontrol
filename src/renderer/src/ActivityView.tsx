@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
 import { History, RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react'
-import type { AuditEntry, CheckpointEntry } from '../../shared/contracts'
+import type { AuditEntry, CheckpointEntry, OllamaStatus } from '../../shared/contracts'
+import { CapabilitiesPanel } from './CapabilitiesPanel'
 
 const POLICY_ROWS: Array<[string, string, string, string]> = [
   ['Project files padhna', 'Allow', 'Allow', 'Allow'],
   ['Code edit / tests', 'Deny', 'Ask', 'Allow'],
   ['Commands, installs, DB, forms, emails, deploy', 'Deny', 'Ask', 'Ask'],
+  ['Screen / browser tab dekhna (ON hone par)', 'Allow', 'Allow', 'Allow'],
+  ['Browser fields fill / click', 'Deny', 'Ask', 'Ask'],
   ['Payments / purchases', 'Never', 'Never', 'Never'],
 ]
 
@@ -13,7 +16,7 @@ function formatTime(value: string): string {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(new Date(value))
 }
 
-export function ActivityView() {
+export function ActivityView({ ollama }: { ollama: OllamaStatus | null }) {
   const [entries, setEntries] = useState<AuditEntry[]>([])
   const [checkpoints, setCheckpoints] = useState<CheckpointEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -42,6 +45,7 @@ export function ActivityView() {
 
   return (
     <div className="activity-view">
+      <CapabilitiesPanel ollama={ollama} />
       <article className="panel">
         <div className="panel-header"><div><h3>Permission policy</h3><p>Har AI action is table se check hota hai. Unknown action = deny.</p></div><div className="panel-icon"><ShieldCheck size={17} /></div></div>
         <table className="policy-table">

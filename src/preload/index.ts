@@ -13,7 +13,7 @@ const api: DevCompanionApi = {
   updateSettings: (patch) => ipcRenderer.invoke('assistant:update-settings', patch),
   getChatHistory: () => ipcRenderer.invoke('assistant:history'),
   clearChatHistory: () => ipcRenderer.invoke('assistant:clear-history'),
-  sendChat: (text) => ipcRenderer.invoke('assistant:send', text),
+  sendChat: (text, options) => ipcRenderer.invoke('assistant:send', text, options),
   stopAll: () => ipcRenderer.invoke('assistant:stop-all'),
   getAuditLog: () => ipcRenderer.invoke('assistant:audit'),
   respondApproval: (id, approved) => ipcRenderer.invoke('approval:respond', id, approved),
@@ -23,6 +23,9 @@ const api: DevCompanionApi = {
   readProcess: (id) => ipcRenderer.invoke('process:read', id),
   startScript: (script) => ipcRenderer.invoke('process:start', script),
   stopProcess: (id) => ipcRenderer.invoke('process:stop', id),
+  getBridgeInfo: () => ipcRenderer.invoke('bridge:info'),
+  rotateBridgeToken: () => ipcRenderer.invoke('bridge:rotate'),
+  previewScreen: () => ipcRenderer.invoke('screen:preview'),
   onChatEvent: (listener) => {
     // Only the event payload is forwarded — never the raw IpcRendererEvent.
     const handler = (_event: Electron.IpcRendererEvent, payload: ChatStreamEvent) => listener(payload)

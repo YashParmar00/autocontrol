@@ -40,6 +40,8 @@ export type OllamaStatus = {
   connected: boolean
   baseUrl: string
   models: string[]
+  /** Installed models that can read images (screen awareness). */
+  visionModels: string[]
   message: string
 }
 
@@ -101,6 +103,19 @@ export type ChatMessage = {
 export type AssistantSettings = {
   model: string | null
   mode: AutonomyMode
+  /** Model used to read screenshots. Can be the same as `model` if it supports vision. */
+  visionModel: string | null
+  screenEnabled: boolean
+  browserEnabled: boolean
+}
+
+export type BridgeInfo = {
+  listening: boolean
+  port: number
+  connected: boolean
+  extensionVersion: string | null
+  error: string | null
+  token: string
 }
 
 export type ApprovalRequest = {
@@ -145,7 +160,7 @@ export type AssistantApi = {
   getChatHistory(): Promise<ChatMessage[]>
   clearChatHistory(): Promise<void>
   /** Starts a streamed answer; events arrive through onChatEvent. Returns the request id. */
-  sendChat(text: string): Promise<string>
+  sendChat(text: string, options?: { attachScreen?: boolean }): Promise<string>
   /** Emergency stop: aborts every running AI request and tool call. */
   stopAll(): Promise<number>
   onChatEvent(listener: (event: ChatStreamEvent) => void): () => void
@@ -157,4 +172,8 @@ export type AssistantApi = {
   readProcess(id: string): Promise<string>
   startScript(script: string): Promise<ProcessInfo>
   stopProcess(id: string): Promise<boolean>
+  getBridgeInfo(): Promise<BridgeInfo>
+  rotateBridgeToken(): Promise<BridgeInfo>
+  /** Screenshot preview so the developer can see exactly what would be sent. */
+  previewScreen(): Promise<string>
 }

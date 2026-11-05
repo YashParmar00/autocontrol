@@ -5,14 +5,18 @@ import { z } from 'zod'
 import { inspectProject } from './project-service'
 import { checkOllama } from './ollama-service'
 import { redactSecrets } from './redaction'
-import { runAgent } from './agent'
+import { defaultTools, runAgent, type AgentTool } from './agent'
+import { BrowserBridge, createPairingToken, describeTab, type BrowserTabContext } from './browser-bridge'
+import { browserTools, screenTools } from './capability-tools'
+import { describeImage } from './ollama-chat'
+import { captureScreen } from './screen'
 import { ApprovalBroker } from './approvals'
 import { applyPlannedWrite, undoCheckpoint } from './file-ops'
 import { ProcessManager, SCRIPT_NAME } from './process-manager'
 import { isAutonomyMode } from './permission-engine'
 import {
   addAuditEntry, addChatMessage, addTaskNote, clearChatHistory, getAssistantSettings, getAuditLog,
-  getChatHistory, getStoreSnapshot, listCheckpoints, setActiveProject, toggleTaskNote, updateAssistantSettings,
+  getChatHistory, getLocalSetting, getStoreSnapshot, listCheckpoints, setLocalSetting, setActiveProject, toggleTaskNote, updateAssistantSettings,
 } from './store'
 import type { AppInfo, ChatStreamEvent, DashboardSnapshot, ProjectSummary } from '../shared/contracts'
 
@@ -27,6 +31,30 @@ function emitChat(event: ChatStreamEvent): void {
 
 const processes = new ProcessManager()
 const approvals = new ApprovalBroker((approval) => emitChat({ requestId: approval.requestId, type: 'approval', approval }))
+
+let bridgeToken = ''
+const bridge = new BrowserBridge(() => bridgeToken)
+
+async function loadBridgeToken(): Promise<void> {
+  bridgeToken = (await getLocalSetting('bridge_token')) ?? ''
+  if (!bridgeToken) {
+    bridgeToken = createPairingToken()
+    await setLocalSetting('bridge_token', bridgeToken)
+  }
+}
+
+async function syncBridge(enabled: boolean): Promise<void> {
+  if (enabled && !bridge.status().listening) await bridge.start()
+  if (!enabled && bridge.status().listening) await bridge.close()
+}
+
+async function bridgeInfo() {
+  return { ...bridge.status(), token: bridgeToken }
+}
+
+function describeScreenWith(visionModel: string, signal: AbortSignal) {
+  return (imageBase64: string, question: string) => describeImage({ model: visionModel, imageBase64, question, signal })
+}
 
 async function activeProjectOrThrow(): Promise<ProjectSummary> {
   const stored = await getStoreSnapshot()
@@ -124,15 +152,22 @@ function registerIpc(): void {
 
   ipcMain.handle('assistant:update-settings', async (event, rawPatch: unknown) => {
     assertTrustedSender(event)
+    const modelName = z.string().trim().min(1).max(200).regex(/^[\w.:/-]+$/)
     const patch = z.object({
-      model: z.string().trim().min(1).max(200).regex(/^[\w.:/-]+$/).nullable().optional(),
+      model: modelName.nullable().optional(),
+      visionModel: modelName.nullable().optional(),
       mode: z.string().refine(isAutonomyMode).optional(),
+      screenEnabled: z.boolean().optional(),
+      browserEnabled: z.boolean().optional(),
     }).strict().parse(rawPatch)
     const before = await getAssistantSettings()
-    const after = await updateAssistantSettings({ model: patch.model, mode: isAutonomyMode(patch.mode) ? patch.mode : undefined })
-    if (patch.mode && before.mode !== after.mode) {
-      await addAuditEntry({ category: 'read_project', tool: 'mode_change', summary: `Mode ${before.mode} → ${after.mode}`, decision: 'allow', outcome: 'ok' })
-    }
+    const after = await updateAssistantSettings({ ...patch, mode: isAutonomyMode(patch.mode) ? patch.mode : undefined })
+    const changes: string[] = []
+    if (before.mode !== after.mode) changes.push(`mode ${before.mode} → ${after.mode}`)
+    if (before.screenEnabled !== after.screenEnabled) changes.push(`screen awareness ${after.screenEnabled ? 'ON' : 'OFF'}`)
+    if (before.browserEnabled !== after.browserEnabled) changes.push(`browser bridge ${after.browserEnabled ? 'ON' : 'OFF'}`)
+    if (changes.length) await addAuditEntry({ category: 'read_project', tool: 'settings', summary: changes.join(', '), decision: 'allow', outcome: 'ok' })
+    await syncBridge(after.browserEnabled)
     return after
   })
 
@@ -165,9 +200,10 @@ function registerIpc(): void {
     return count
   })
 
-  ipcMain.handle('assistant:send', async (event, rawText: unknown) => {
+  ipcMain.handle('assistant:send', async (event, rawText: unknown, rawOptions: unknown) => {
     assertTrustedSender(event)
     const text = z.string().trim().min(1).max(8_000).parse(rawText)
+    const options = z.object({ attachScreen: z.boolean().optional() }).strict().optional().parse(rawOptions) ?? {}
     const settings = await getAssistantSettings()
     if (!settings.model) throw new Error('Pehle ek local model select karo (Ollama).')
     const stored = await getStoreSnapshot()
@@ -182,7 +218,33 @@ function registerIpc(): void {
     let wroteFiles = false
     void (async () => {
       try {
+        const tools: AgentTool[] = defaultTools()
+        let extraContext = ''
+        if (settings.screenEnabled && settings.visionModel) {
+          const describe = describeScreenWith(settings.visionModel, controller.signal)
+          tools.push(...screenTools({ capture: () => captureScreen(), describe }))
+          if (options.attachScreen) {
+            emitChat({ requestId, type: 'tool', tool: 'look_at_screen', summary: 'look_at_screen (attached by you)', decision: 'allow', outcome: 'ok' })
+            const description = redactSecrets(await describe(await captureScreen(), text))
+            extraContext += `## What is on the developer's screen right now (described from a screenshot)\n${description}\n`
+            await addAuditEntry({ category: 'analyze_screen', tool: 'look_at_screen', summary: 'Screenshot attached by developer', decision: 'allow', outcome: 'ok' })
+          }
+        }
+        if (settings.browserEnabled && bridge.status().connected) {
+          tools.push(...browserTools({
+            getContext: () => bridge.request<BrowserTabContext>('get_context'),
+            fill: (fields) => bridge.request('fill', { fields }),
+            click: (ref) => bridge.request('click', { ref }),
+            openUrl: (url) => bridge.request('open_url', { url }),
+          }))
+          try {
+            const tab = await bridge.request<BrowserTabContext>('get_context')
+            extraContext += `## Developer's active Chrome tab (fields marked sensitive have hidden values)\n${redactSecrets(describeTab(tab, 2_500))}\n`
+          } catch { /* e.g. chrome:// page */ }
+        }
         const result = await runAgent({
+          tools,
+          extraContext: extraContext || undefined,
           toolContext: {
             requestId,
             processes,
@@ -272,6 +334,27 @@ function registerIpc(): void {
     assertTrustedSender(event)
     return processes.stop(z.string().min(1).max(40).parse(rawId))
   })
+
+  ipcMain.handle('bridge:info', (event) => {
+    assertTrustedSender(event)
+    return bridgeInfo()
+  })
+
+  ipcMain.handle('bridge:rotate', async (event) => {
+    assertTrustedSender(event)
+    bridgeToken = createPairingToken()
+    await setLocalSetting('bridge_token', bridgeToken)
+    bridge.disconnect()
+    await addAuditEntry({ category: 'read_project', tool: 'bridge_token', summary: 'Pairing token rotated; extension disconnected', decision: 'allow', outcome: 'ok' })
+    return bridgeInfo()
+  })
+
+  ipcMain.handle('screen:preview', async (event) => {
+    assertTrustedSender(event)
+    const settings = await getAssistantSettings()
+    if (!settings.screenEnabled) throw new Error('Screen awareness is off.')
+    return `data:image/jpeg;base64,${await captureScreen(1000)}`
+  })
 }
 
 function createWindow(): void {
@@ -293,6 +376,8 @@ function createWindow(): void {
   })
 
   mainWindow.once('ready-to-show', () => mainWindow?.show())
+  // Keep our own window (chat, approvals, vault) out of screenshots and screen sharing.
+  mainWindow.setContentProtection(true)
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (!isTrustedRendererUrl(url)) event.preventDefault()
@@ -312,12 +397,13 @@ app.whenReady().then(() => {
   app.setAppUserModelId('in.devcompanion.desktop')
   registerIpc()
   createWindow()
+  void loadBridgeToken().then(async () => syncBridge((await getAssistantSettings()).browserEnabled))
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-app.on('before-quit', () => { processes.stopAll() })
+app.on('before-quit', () => { processes.stopAll(); void bridge.close() })
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

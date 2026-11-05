@@ -51,7 +51,7 @@ function App() {
 
   async function refreshOllama() {
     try { setOllama(await window.devCompanion.checkOllama()) }
-    catch { setOllama({ connected: false, baseUrl: 'http://127.0.0.1:11434', models: [], message: 'Could not check local AI runtime.' }) }
+    catch { setOllama({ connected: false, baseUrl: 'http://127.0.0.1:11434', models: [], visionModels: [], message: 'Could not check local AI runtime.' }) }
   }
 
   useEffect(() => {
@@ -139,7 +139,7 @@ function App() {
 
         {view === 'assistant' && <div className="page-content assistant-page"><AssistantView project={project} ollama={ollama} onRefreshOllama={() => void refreshOllama()} /></div>}
         {view === 'terminal' && <div className="page-content"><TerminalView project={project} /></div>}
-        {view === 'activity' && <div className="page-content"><ActivityView /></div>}
+        {view === 'activity' && <div className="page-content"><ActivityView ollama={ollama} /></div>}
         <div className="page-content" hidden={view !== 'overview'}>
           <section className="welcome-row">
             <div><div className="eyebrow">YOUR DEVELOPMENT WORKSPACE</div><h1>Good to have you here.</h1><p>Keep building. I’ll keep the project context close.</p></div>

@@ -104,3 +104,21 @@ export async function streamChat(options: {
   }
   return { content, toolCalls }
 }
+
+/** One-shot image description with a vision model. Instructed never to transcribe secrets. */
+export async function describeImage(options: { model: string; imageBase64: string; question: string; signal: AbortSignal; fetchImpl?: typeof fetch }): Promise<string> {
+  const result = await streamChat({
+    model: options.model,
+    signal: options.signal,
+    fetchImpl: options.fetchImpl,
+    onToken: () => {},
+    messages: [
+      {
+        role: 'system',
+        content: 'You describe screenshots of a software developer\'s screen for another assistant. Be factual and specific: name the app/website, the page or step shown, visible headings, form fields with their labels, buttons, error messages and any code or terminal output (quote short text exactly). Never transcribe passwords, API keys, secrets, tokens, OTPs, card numbers or other credentials — write [hidden] instead.',
+      },
+      { role: 'user', content: `Question: ${options.question}`, images: [options.imageBase64] },
+    ],
+  })
+  return result.content.trim() || '(the vision model returned no description)'
+}

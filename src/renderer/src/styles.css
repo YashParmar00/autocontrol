@@ -234,3 +234,23 @@ button.nav-item:hover:not(.active) { background: #f7f8fa; color: #4a5562; }
 .process-row .dot.on { background: #4fa36b; }
 .process-row span.meta { margin-left: auto; color: #9aa1aa; font-size: 10px; }
 .terminal-output { margin: 0; background: #12181e; color: #d7dee4; border-radius: 12px; padding: 14px 16px; font-size: 11.5px; line-height: 1.5; font-family: ui-monospace, Consolas, monospace; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+
+/* ---- v0.4.0: capabilities ---- */
+.attach-button { display: grid; place-items: center; width: 46px; border: 1px solid #dfe3e7; background: #fff; border-radius: 10px; color: #6b7682; }
+.attach-button.on { background: #202b35; color: #fff; border-color: #202b35; }
+.capability-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid #f1f3f5; }
+.capability-copy { display: flex; gap: 10px; align-items: flex-start; color: #4b5965; }
+.capability-copy strong { display: block; font-size: 12px; color: #222a33; margin-bottom: 3px; }
+.capability-copy span { display: block; font-size: 11px; color: #8b949f; line-height: 1.4; max-width: 560px; }
+.capability-detail { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 0 0 14px 26px; }
+.capability-detail code, .runtime-help code { font-family: ui-monospace, Consolas, monospace; font-size: 10.5px; background: #f3f5f7; padding: 1px 4px; border-radius: 4px; }
+.screen-preview { max-width: 420px; border-radius: 8px; border: 1px solid #e2e6e9; }
+.bridge-status { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #4b5965; }
+.token-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.token-row code { padding: 7px 9px !important; }
+.switch { position: relative; width: 38px; height: 22px; flex: 0 0 auto; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch span { position: absolute; inset: 0; background: #d5dadf; border-radius: 22px; transition: .15s; cursor: pointer; }
+.switch span::before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .15s; }
+.switch input:checked + span { background: #2f7a4f; }
+.switch input:checked + span::before { transform: translateX(16px); }

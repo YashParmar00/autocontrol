@@ -3,7 +3,7 @@ import initSqlJs from 'sql.js'
 import { createRequire } from 'node:module'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { AssistantSettings, AuditEntry, CheckpointEntry, AutonomyMode, ChatMessage, ProjectSummary, TaskNote } from '../shared/contracts'
+import type { AssistantSettings, AuditEntry, CheckpointEntry, ChatMessage, ProjectSummary, TaskNote } from '../shared/contracts'
 
 const require = createRequire(import.meta.url)
 type Database = InstanceType<Awaited<ReturnType<typeof initSqlJs>>['Database']>
@@ -197,15 +197,23 @@ export async function getAssistantSettings(): Promise<AssistantSettings> {
   return {
     model: getSetting(database, 'assistant_model'),
     mode: mode === 'guide' || mode === 'autonomous' ? mode : 'supervised',
+    visionModel: getSetting(database, 'assistant_vision_model'),
+    screenEnabled: getSetting(database, 'screen_enabled') === '1',
+    browserEnabled: getSetting(database, 'browser_enabled') === '1',
   }
 }
 
-export async function updateAssistantSettings(patch: { model?: string | null; mode?: AutonomyMode }): Promise<AssistantSettings> {
+export async function updateAssistantSettings(patch: Partial<AssistantSettings>): Promise<AssistantSettings> {
   const database = await getDatabase()
-  if (patch.model !== undefined) {
-    if (patch.model) database.run('INSERT OR REPLACE INTO settings(key, value) VALUES (?, ?)', ['assistant_model', patch.model])
-    else database.run('DELETE FROM settings WHERE key = ?', ['assistant_model'])
+  const setOrDelete = (key: string, value: string | null | undefined) => {
+    if (value === undefined) return
+    if (value) database.run('INSERT OR REPLACE INTO settings(key, value) VALUES (?, ?)', [key, value])
+    else database.run('DELETE FROM settings WHERE key = ?', [key])
   }
+  setOrDelete('assistant_model', patch.model)
+  setOrDelete('assistant_vision_model', patch.visionModel)
+  if (patch.screenEnabled !== undefined) setOrDelete('screen_enabled', patch.screenEnabled ? '1' : null)
+  if (patch.browserEnabled !== undefined) setOrDelete('browser_enabled', patch.browserEnabled ? '1' : null)
   if (patch.mode) database.run('INSERT OR REPLACE INTO settings(key, value) VALUES (?, ?)', ['assistant_mode', patch.mode])
   await persistSoon()
   return getAssistantSettings()
@@ -307,4 +315,15 @@ export async function listCheckpoints(projectPath: string | null, limit = 100): 
   if (!projectPath) return []
   const database = await getDatabase()
   return allRows<CheckpointRow>(database, 'SELECT * FROM checkpoints WHERE project_path = ? ORDER BY at DESC LIMIT ?', [projectPath, limit]).map(toCheckpoint)
+}
+
+/** Generic local setting (used for the browser pairing token). */
+export async function getLocalSetting(key: string): Promise<string | null> {
+  return getSetting(await getDatabase(), key)
+}
+
+export async function setLocalSetting(key: string, value: string): Promise<void> {
+  const database = await getDatabase()
+  database.run('INSERT OR REPLACE INTO settings(key, value) VALUES (?, ?)', [key, value])
+  await persistSoon()
 }

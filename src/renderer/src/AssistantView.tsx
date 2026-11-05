@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Check, BrainCircuit, Eraser, Eye, LoaderCircle, OctagonX, SendHorizontal, ShieldAlert, ShieldCheck, Sparkles, Wrench, Zap } from 'lucide-react'
+import { Camera, Check, BrainCircuit, Eraser, Eye, LoaderCircle, OctagonX, SendHorizontal, ShieldAlert, ShieldCheck, Sparkles, Wrench, Zap } from 'lucide-react'
 import type { ApprovalRequest, AssistantSettings, AutonomyMode, ChatMessage, OllamaStatus, ProjectSummary } from '../../shared/contracts'
 
 type LiveTool = { tool: string; summary: string; decision: string; outcome: string }
@@ -65,7 +65,7 @@ export function AssistantView(props: {
   onRefreshOllama: () => void
 }) {
   const { project, ollama } = props
-  const [settings, setSettings] = useState<AssistantSettings>({ model: null, mode: 'supervised' })
+  const [settings, setSettings] = useState<AssistantSettings>({ model: null, mode: 'supervised', visionModel: null, screenEnabled: false, browserEnabled: false })
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState('')
@@ -73,6 +73,7 @@ export function AssistantView(props: {
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([])
   const [activeRequest, setActiveRequest] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [attachScreen, setAttachScreen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const activeRef = useRef<string | null>(null)
   activeRef.current = activeRequest
@@ -116,7 +117,8 @@ export function AssistantView(props: {
     setMessages((current) => [...current, optimistic])
     setDraft('')
     try {
-      const requestId = await window.devCompanion.sendChat(trimmed)
+      const requestId = await window.devCompanion.sendChat(trimmed, attachScreen ? { attachScreen: true } : undefined)
+      setAttachScreen(false)
       activeRef.current = requestId
       setActiveRequest(requestId)
     } catch (cause) {
@@ -182,7 +184,7 @@ export function AssistantView(props: {
         </div>
       </div>
 
-      <div className="mode-explainer">{MODES.find((mode) => mode.id === settings.mode)?.hint} · Payments hamesha manual · Secrets AI ko kabhi nahi dikhte</div>
+      <div className="mode-explainer">{MODES.find((mode) => mode.id === settings.mode)?.hint} · Payments hamesha manual · Secrets AI ko kabhi nahi dikhte{settings.screenEnabled ? ' · 📷 Screen ON' : ''}{settings.browserEnabled ? ' · 🌐 Browser ON' : ''}</div>
 
       {noModels && (
         <div className="setup-card">
@@ -234,6 +236,12 @@ export function AssistantView(props: {
       {error && <div className="error-banner compact"><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss">×</button></div>}
 
       <form className="chat-input" onSubmit={onSubmit}>
+        {settings.screenEnabled && settings.visionModel && (
+          <button type="button" className={`attach-button ${attachScreen ? 'on' : ''}`} onClick={() => setAttachScreen(!attachScreen)}
+            title="Is sawal ke saath abhi ki screen ka screenshot AI ko dikhao (vision model se describe hoga)" aria-pressed={attachScreen}>
+            <Camera size={16} />
+          </button>
+        )}
         <textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={onKeyDown} rows={2} maxLength={8000}
           placeholder={settings.model ? 'Kuch bhi poochho… (Enter = send, Shift+Enter = new line)' : 'Pehle Ollama model select karo'} disabled={!settings.model} />
         <button type="submit" className="primary-button" disabled={!draft.trim() || !!activeRequest || !settings.model}>
