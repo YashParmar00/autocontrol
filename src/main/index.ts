@@ -6,10 +6,13 @@ import { inspectProject } from './project-service'
 import { checkOllama } from './ollama-service'
 import { redactSecrets } from './redaction'
 import { runAgent } from './agent'
+import { ApprovalBroker } from './approvals'
+import { applyPlannedWrite, undoCheckpoint } from './file-ops'
+import { ProcessManager, SCRIPT_NAME } from './process-manager'
 import { isAutonomyMode } from './permission-engine'
 import {
   addAuditEntry, addChatMessage, addTaskNote, clearChatHistory, getAssistantSettings, getAuditLog,
-  getChatHistory, getStoreSnapshot, setActiveProject, toggleTaskNote, updateAssistantSettings,
+  getChatHistory, getStoreSnapshot, listCheckpoints, setActiveProject, toggleTaskNote, updateAssistantSettings,
 } from './store'
 import type { AppInfo, ChatStreamEvent, DashboardSnapshot, ProjectSummary } from '../shared/contracts'
 
@@ -20,6 +23,15 @@ const runningRequests = new Map<string, AbortController>()
 
 function emitChat(event: ChatStreamEvent): void {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('ai:event', event)
+}
+
+const processes = new ProcessManager()
+const approvals = new ApprovalBroker((approval) => emitChat({ requestId: approval.requestId, type: 'approval', approval }))
+
+async function activeProjectOrThrow(): Promise<ProjectSummary> {
+  const stored = await getStoreSnapshot()
+  if (!stored.activeProject) throw new Error('Pehle project folder select karo.')
+  return stored.activeProject
 }
 
 function getAppInfo(): AppInfo {
@@ -143,10 +155,13 @@ function registerIpc(): void {
 
   ipcMain.handle('assistant:stop-all', async (event) => {
     assertTrustedSender(event)
-    const count = runningRequests.size
+    const requests = runningRequests.size
     for (const controller of runningRequests.values()) controller.abort()
     runningRequests.clear()
-    if (count) await addAuditEntry({ category: 'read_project', tool: 'emergency_stop', summary: `Stopped ${count} running request(s)`, decision: 'allow', outcome: 'ok' })
+    const rejected = approvals.rejectAll()
+    const killed = processes.stopAll()
+    const count = requests + rejected + killed
+    if (count) await addAuditEntry({ category: 'run_command', tool: 'emergency_stop', summary: `Stopped ${requests} AI request(s), rejected ${rejected} approval(s), killed ${killed} process(es)`, decision: 'allow', outcome: 'ok' })
     return count
   })
 
@@ -164,9 +179,21 @@ function registerIpc(): void {
     const controller = new AbortController()
     runningRequests.set(requestId, controller)
 
+    let wroteFiles = false
     void (async () => {
       try {
         const result = await runAgent({
+          toolContext: {
+            requestId,
+            processes,
+            requestApproval: (input) => approvals.request({ ...input, requestId }, controller.signal),
+            applyWrite: async (plan, tool) => {
+              if (!projectPath) throw new Error('No project selected.')
+              await applyPlannedWrite(projectPath, plan, tool)
+              wroteFiles = true
+            },
+            scriptEnv: async () => ({}),
+          },
           project: stored.activeProject,
           notes: stored.notes,
           mode: settings.mode,
@@ -176,10 +203,11 @@ function registerIpc(): void {
           signal: controller.signal,
           onToken: (token) => emitChat({ requestId, type: 'token', text: token }),
           onTool: (record) => {
-            emitChat({ requestId, type: 'tool', tool: record.tool, summary: record.summary, decision: record.decision })
+            emitChat({ requestId, type: 'tool', tool: record.tool, summary: record.summary, decision: record.decision, outcome: record.outcome })
             void addAuditEntry(record)
           },
         })
+        if (wroteFiles && projectPath) await setActiveProject(await inspectProject(projectPath)).catch(() => {})
         const saved = await addChatMessage(projectPath, 'assistant', result.content || '(empty answer)', result.toolTrace)
         emitChat({ requestId, type: 'done', message: saved })
       } catch (error) {
@@ -196,6 +224,53 @@ function registerIpc(): void {
     })()
 
     return requestId
+  })
+
+  ipcMain.handle('approval:respond', async (event, rawId: unknown, rawApproved: unknown) => {
+    assertTrustedSender(event)
+    return approvals.respond(z.string().uuid().parse(rawId), z.boolean().parse(rawApproved))
+  })
+
+  ipcMain.handle('checkpoints:list', async (event) => {
+    assertTrustedSender(event)
+    const stored = await getStoreSnapshot()
+    return listCheckpoints(stored.activeProject?.path ?? null)
+  })
+
+  ipcMain.handle('checkpoints:undo', async (event, rawId: unknown) => {
+    assertTrustedSender(event)
+    const project = await activeProjectOrThrow()
+    const id = z.string().uuid().parse(rawId)
+    await undoCheckpoint(project.path, id)
+    await addAuditEntry({ category: 'edit_code', tool: 'undo', summary: `Undo checkpoint ${id.slice(0, 8)}`, decision: 'allow', outcome: 'ok' })
+    await setActiveProject(await inspectProject(project.path)).catch(() => {})
+    return listCheckpoints(project.path)
+  })
+
+  ipcMain.handle('process:list', (event) => {
+    assertTrustedSender(event)
+    return processes.list()
+  })
+
+  ipcMain.handle('process:read', (event, rawId: unknown) => {
+    assertTrustedSender(event)
+    return processes.read(z.string().min(1).max(40).parse(rawId), 40_000)
+  })
+
+  ipcMain.handle('process:start', async (event, rawScript: unknown) => {
+    assertTrustedSender(event)
+    // Started by the developer's own click, so no approval prompt — but still only package.json scripts.
+    const project = await activeProjectOrThrow()
+    const script = z.string().regex(SCRIPT_NAME).parse(rawScript)
+    if (!project.scripts.includes(script)) throw new Error(`"${script}" is not a script in package.json.`)
+    const info = processes.start({ cwd: project.path, manager: project.packageManager, script })
+    await addAuditEntry({ category: 'run_command', tool: 'start_process (you)', summary: `${script} → ${info.id}`, decision: 'allow', outcome: 'ok' })
+    return info
+  })
+
+  ipcMain.handle('process:stop', (event, rawId: unknown) => {
+    assertTrustedSender(event)
+    return processes.stop(z.string().min(1).max(40).parse(rawId))
   })
 }
 
@@ -241,6 +316,8 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+
+app.on('before-quit', () => { processes.stopAll() })
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

@@ -12,6 +12,8 @@ export type OllamaMessage = {
   content: string
   tool_calls?: OllamaToolCall[]
   tool_name?: string
+  /** Base64-encoded images for vision models. */
+  images?: string[]
 }
 
 export type OllamaTool = {

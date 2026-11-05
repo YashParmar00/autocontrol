@@ -59,6 +59,7 @@ export async function buildContext(options: {
   mode: AutonomyMode
   userMessage: string
   toolsEnabled: boolean
+  toolNames?: string[]
   budget?: number
 }): Promise<BuiltContext> {
   const { project, notes, mode, userMessage, toolsEnabled } = options
@@ -71,7 +72,12 @@ export async function buildContext(options: {
     describeMode(mode),
   ]
   if (toolsEnabled) {
-    parts.push('You have read-only tools: list_files, read_file, search_code. Use them instead of guessing about the codebase. Paths are relative to the project root.')
+    const names = options.toolNames?.length ? options.toolNames : ['list_files', 'read_file', 'search_code']
+    parts.push(
+      `Tools available: ${names.join(', ')}. Use them instead of guessing about the codebase. Paths are relative to the project root.`,
+      'Before editing a file, read it first. Make small, focused edits with edit_file. After changing code, run the relevant test/typecheck script if one exists.',
+      'Some actions pause for the developer\'s approval; if one is rejected, do not retry it — ask what they want instead.',
+    )
   }
 
   const includedFiles: string[] = []

@@ -189,7 +189,7 @@ button.nav-item:hover:not(.active) { background: #f7f8fa; color: #4a5562; }
 .chat-code { margin: 6px 0; background: #1b232c; color: #e3eaf0; border-radius: 8px; padding: 10px 12px; overflow-x: auto; font-size: 11.5px; font-family: ui-monospace, Consolas, monospace; }
 .tool-trace { font-size: 10px; color: #8b949f; display: flex; align-items: center; gap: 5px; font-family: ui-monospace, Consolas, monospace; }
 .tool-chip { align-self: flex-start; font-size: 10.5px; font-family: ui-monospace, Consolas, monospace; background: #eef4f0; color: #3f6f52; padding: 4px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 5px; }
-.tool-chip.ask, .tool-chip.deny { background: #fdf0ec; color: #a2432f; }
+.tool-chip.bad { background: #fdf0ec; color: #a2432f; }
 .thinking { display: inline-flex; align-items: center; gap: 7px; color: #7b8590; }
 .chat-input { display: flex; gap: 8px; align-items: stretch; }
 .chat-input textarea { flex: 1; resize: none; font: inherit; font-size: 13px; padding: 11px 13px; border: 1px solid #dfe3e7; border-radius: 10px; background: #fff; outline: none; }
@@ -208,3 +208,29 @@ button.nav-item:hover:not(.active) { background: #f7f8fa; color: #4a5562; }
 .audit-row { display: grid; grid-template-columns: 70px 1fr auto; gap: 10px; align-items: center; padding: 8px 4px; border-bottom: 1px solid #f3f4f6; font-size: 11px; }
 .audit-row code { font-family: ui-monospace, Consolas, monospace; color: #3e4853; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .audit-meta { color: #9aa1aa; font-size: 10px; }
+
+/* ---- v0.3.0: approvals, checkpoints, terminal ---- */
+.approval-card { border: 1px solid #f1d9b5; background: #fffaf2; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; max-width: 760px; }
+.approval-head { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #7a5a1e; }
+.approval-head code { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: #3e4853; }
+.approval-preview { margin: 0; max-height: 320px; overflow: auto; background: #1b232c; color: #cfd8df; border-radius: 8px; padding: 10px 12px; font-size: 11px; line-height: 1.45; font-family: ui-monospace, Consolas, monospace; }
+.diff-add { color: #8fdc9f; background: rgba(80, 170, 100, .12); }
+.diff-del { color: #f2a196; background: rgba(210, 90, 70, .12); }
+.diff-hunk { color: #7fa8d8; }
+.approval-actions { display: flex; align-items: center; gap: 8px; }
+.approve-button { display: inline-flex; align-items: center; gap: 6px; background: #2f7a4f; color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; font-size: 11px; font-weight: 700; }
+.approve-button:hover { background: #276843; }
+.approval-hint { font-size: 10px; color: #a3947b; margin-left: auto; }
+.checkpoint-row { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 8px 4px; border-bottom: 1px solid #f3f4f6; font-size: 11px; }
+.checkpoint-row code { font-family: ui-monospace, Consolas, monospace; color: #3e4853; }
+.terminal-view { display: grid; grid-template-columns: 260px 1fr; gap: 16px; height: calc(100vh - 140px); }
+.terminal-side { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; }
+.script-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.script-chip { border: 1px solid #e2e6e9; background: #fff; border-radius: 7px; padding: 6px 9px; font-size: 11px; font-family: ui-monospace, Consolas, monospace; color: #3e4853; }
+.script-chip:hover { border-color: #9aa8b4; }
+.process-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 1px solid #edf0f2; background: #fff; border-radius: 8px; padding: 8px 10px; font-size: 11px; }
+.process-row.selected { border-color: #202b35; }
+.process-row .dot { width: 7px; height: 7px; border-radius: 50%; background: #b8c0c8; flex: 0 0 auto; }
+.process-row .dot.on { background: #4fa36b; }
+.process-row span.meta { margin-left: auto; color: #9aa1aa; font-size: 10px; }
+.terminal-output { margin: 0; background: #12181e; color: #d7dee4; border-radius: 12px; padding: 14px 16px; font-size: 11.5px; line-height: 1.5; font-family: ui-monospace, Consolas, monospace; overflow: auto; white-space: pre-wrap; word-break: break-word; }

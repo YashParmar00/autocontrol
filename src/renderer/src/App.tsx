@@ -8,9 +8,10 @@ import {
 import type { DashboardSnapshot, OllamaStatus, TaskNote } from '../../shared/contracts'
 import { AssistantView } from './AssistantView'
 import { ActivityView } from './ActivityView'
+import { TerminalView } from './TerminalView'
 
-type View = 'overview' | 'assistant' | 'activity'
-const VIEW_TITLES: Record<View, string> = { overview: 'Overview', assistant: 'Assistant', activity: 'Security & activity' }
+type View = 'overview' | 'assistant' | 'terminal' | 'activity'
+const VIEW_TITLES: Record<View, string> = { overview: 'Overview', assistant: 'Assistant', terminal: 'Terminal', activity: 'Security & activity' }
 
 const EMPTY_DASHBOARD: DashboardSnapshot = {
   app: { name: 'Dev Companion', version: '0.2.0', platform: 'win32' },
@@ -117,6 +118,7 @@ function App() {
         <nav className="nav-list">
           <button className={`nav-item ${view === 'overview' ? 'active' : ''}`} onClick={() => setView('overview')}><Activity size={17} /><span>Overview</span>{pendingCount > 0 && <span className="nav-count">{pendingCount}</span>}</button>
           <button className={`nav-item ${view === 'assistant' ? 'active' : ''}`} onClick={() => setView('assistant')}><Sparkles size={17} /><span>Assistant</span><span className="coming-soon live">NEW</span></button>
+          <button className={`nav-item ${view === 'terminal' ? 'active' : ''}`} onClick={() => setView('terminal')}><Command size={17} /><span>Terminal</span></button>
         </nav>
         <div className="nav-label tools-label">SYSTEM</div>
         <nav className="nav-list">
@@ -136,6 +138,7 @@ function App() {
         </header>
 
         {view === 'assistant' && <div className="page-content assistant-page"><AssistantView project={project} ollama={ollama} onRefreshOllama={() => void refreshOllama()} /></div>}
+        {view === 'terminal' && <div className="page-content"><TerminalView project={project} /></div>}
         {view === 'activity' && <div className="page-content"><ActivityView /></div>}
         <div className="page-content" hidden={view !== 'overview'}>
           <section className="welcome-row">

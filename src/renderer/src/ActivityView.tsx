@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { RefreshCw, ShieldCheck } from 'lucide-react'
-import type { AuditEntry } from '../../shared/contracts'
+import { History, RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react'
+import type { AuditEntry, CheckpointEntry } from '../../shared/contracts'
 
 const POLICY_ROWS: Array<[string, string, string, string]> = [
   ['Project files padhna', 'Allow', 'Allow', 'Allow'],
@@ -15,11 +15,27 @@ function formatTime(value: string): string {
 
 export function ActivityView() {
   const [entries, setEntries] = useState<AuditEntry[]>([])
+  const [checkpoints, setCheckpoints] = useState<CheckpointEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   async function load() {
     setLoading(true)
-    try { setEntries(await window.devCompanion.getAuditLog()) } finally { setLoading(false) }
+    try {
+      const [audit, saved] = await Promise.all([window.devCompanion.getAuditLog(), window.devCompanion.getCheckpoints()])
+      setEntries(audit)
+      setCheckpoints(saved)
+    } finally { setLoading(false) }
+  }
+
+  async function undo(id: string) {
+    setError('')
+    try {
+      setCheckpoints(await window.devCompanion.undoCheckpoint(id))
+      setEntries(await window.devCompanion.getAuditLog())
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : 'Undo failed.')
+    }
   }
 
   useEffect(() => { void load() }, [])
@@ -34,6 +50,20 @@ export function ActivityView() {
             <tr key={action}><td>{action}</td>{cells.map((cell, index) => <td key={index}><span className={`policy-pill ${cell.toLowerCase()}`}>{cell}</span></td>)}</tr>
           ))}</tbody>
         </table>
+      </article>
+
+      <article className="panel">
+        <div className="panel-header"><div><h3>AI file changes</h3><p>Har AI edit se pehle checkpoint banta hai. Undo = file wapas pehle jaisi (naya file ho to delete).</p></div><div className="panel-icon"><History size={17} /></div></div>
+        {error && <div className="error-banner compact"><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss">×</button></div>}
+        {checkpoints.length ? checkpoints.map((checkpoint) => (
+          <div key={checkpoint.id} className="checkpoint-row">
+            <code>{checkpoint.file}{checkpoint.created ? ' (new)' : ''}</code>
+            <span className="audit-meta">{checkpoint.tool} · {formatTime(checkpoint.at)}</span>
+            {checkpoint.restored
+              ? <span className="policy-pill">undone</span>
+              : <button className="outline-button" onClick={() => void undo(checkpoint.id)}><RotateCcw size={12} /> Undo</button>}
+          </div>
+        )) : <div className="memory-empty">Is project mein AI ne abhi tak koi file change nahi ki.</div>}
       </article>
 
       <article className="panel">

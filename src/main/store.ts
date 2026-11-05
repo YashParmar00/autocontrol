@@ -3,7 +3,7 @@ import initSqlJs from 'sql.js'
 import { createRequire } from 'node:module'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { AssistantSettings, AuditEntry, AutonomyMode, ChatMessage, ProjectSummary, TaskNote } from '../shared/contracts'
+import type { AssistantSettings, AuditEntry, CheckpointEntry, AutonomyMode, ChatMessage, ProjectSummary, TaskNote } from '../shared/contracts'
 
 const require = createRequire(import.meta.url)
 type Database = InstanceType<Awaited<ReturnType<typeof initSqlJs>>['Database']>
@@ -51,6 +51,15 @@ async function getDatabase(): Promise<Database> {
       created_at TEXT NOT NULL
     )`)
     database.run('CREATE INDEX IF NOT EXISTS idx_chat_project_created ON chat_messages(project_path, created_at)')
+    database.run(`CREATE TABLE IF NOT EXISTS checkpoints (
+      id TEXT PRIMARY KEY,
+      at TEXT NOT NULL,
+      project_path TEXT NOT NULL,
+      file TEXT NOT NULL,
+      tool TEXT NOT NULL,
+      previous_content TEXT,
+      restored INTEGER NOT NULL DEFAULT 0
+    )`)
     database.run(`CREATE TABLE IF NOT EXISTS audit_log (
       id TEXT PRIMARY KEY,
       at TEXT NOT NULL,
@@ -260,4 +269,42 @@ export async function addAuditEntry(entry: Omit<AuditEntry, 'id' | 'at'>): Promi
 export async function getAuditLog(limit = 200): Promise<AuditEntry[]> {
   const database = await getDatabase()
   return allRows<AuditEntry>(database, 'SELECT id, at, category, tool, summary, decision, outcome FROM audit_log ORDER BY at DESC LIMIT ?', [limit])
+}
+
+// ---------------------------------------------------------------------------
+// v0.3.0 — checkpoints (undo for every AI file write)
+// ---------------------------------------------------------------------------
+
+type CheckpointRow = { id: string; at: string; project_path: string; file: string; tool: string; previous_content: string | null; restored: number }
+
+function toCheckpoint(row: CheckpointRow): CheckpointEntry {
+  return { id: row.id, at: row.at, projectPath: row.project_path, file: row.file, tool: row.tool, created: row.previous_content === null, restored: row.restored === 1 }
+}
+
+export async function addCheckpoint(projectPath: string, file: string, tool: string, previousContent: string | null): Promise<CheckpointEntry> {
+  const database = await getDatabase()
+  const row: CheckpointRow = { id: crypto.randomUUID(), at: new Date().toISOString(), project_path: projectPath, file, tool, previous_content: previousContent, restored: 0 }
+  database.run('INSERT INTO checkpoints(id, at, project_path, file, tool, previous_content, restored) VALUES (?, ?, ?, ?, ?, ?, 0)',
+    [row.id, row.at, row.project_path, row.file, row.tool, row.previous_content])
+  database.run('DELETE FROM checkpoints WHERE id NOT IN (SELECT id FROM checkpoints ORDER BY at DESC LIMIT 500)')
+  await persistSoon()
+  return toCheckpoint(row)
+}
+
+export async function getCheckpoint(id: string): Promise<(CheckpointEntry & { previousContent: string | null }) | null> {
+  const database = await getDatabase()
+  const row = firstRow<CheckpointRow>(database, 'SELECT * FROM checkpoints WHERE id = ?', [id])
+  return row ? { ...toCheckpoint(row), previousContent: row.previous_content } : null
+}
+
+export async function markCheckpointRestored(id: string): Promise<void> {
+  const database = await getDatabase()
+  database.run('UPDATE checkpoints SET restored = 1 WHERE id = ?', [id])
+  await persistSoon()
+}
+
+export async function listCheckpoints(projectPath: string | null, limit = 100): Promise<CheckpointEntry[]> {
+  if (!projectPath) return []
+  const database = await getDatabase()
+  return allRows<CheckpointRow>(database, 'SELECT * FROM checkpoints WHERE project_path = ? ORDER BY at DESC LIMIT ?', [projectPath, limit]).map(toCheckpoint)
 }

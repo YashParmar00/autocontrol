@@ -16,6 +16,13 @@ const api: DevCompanionApi = {
   sendChat: (text) => ipcRenderer.invoke('assistant:send', text),
   stopAll: () => ipcRenderer.invoke('assistant:stop-all'),
   getAuditLog: () => ipcRenderer.invoke('assistant:audit'),
+  respondApproval: (id, approved) => ipcRenderer.invoke('approval:respond', id, approved),
+  getCheckpoints: () => ipcRenderer.invoke('checkpoints:list'),
+  undoCheckpoint: (id) => ipcRenderer.invoke('checkpoints:undo', id),
+  listProcesses: () => ipcRenderer.invoke('process:list'),
+  readProcess: (id) => ipcRenderer.invoke('process:read', id),
+  startScript: (script) => ipcRenderer.invoke('process:start', script),
+  stopProcess: (id) => ipcRenderer.invoke('process:stop', id),
   onChatEvent: (listener) => {
     // Only the event payload is forwarded — never the raw IpcRendererEvent.
     const handler = (_event: Electron.IpcRendererEvent, payload: ChatStreamEvent) => listener(payload)

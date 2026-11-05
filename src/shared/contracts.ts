@@ -103,9 +103,39 @@ export type AssistantSettings = {
   mode: AutonomyMode
 }
 
+export type ApprovalRequest = {
+  id: string
+  requestId: string
+  createdAt: string
+  tool: string
+  category: ActionCategory
+  summary: string
+  /** Diff, command line or form values the developer is approving. */
+  preview: string
+}
+
+export type CheckpointEntry = {
+  id: string
+  at: string
+  projectPath: string
+  file: string
+  tool: string
+  created: boolean
+  restored: boolean
+}
+
+export type ProcessInfo = {
+  id: string
+  label: string
+  startedAt: string
+  running: boolean
+  exitCode: number | null
+}
+
 export type ChatStreamEvent =
   | { requestId: string; type: 'token'; text: string }
-  | { requestId: string; type: 'tool'; tool: string; summary: string; decision: PermissionDecision }
+  | { requestId: string; type: 'approval'; approval: ApprovalRequest }
+  | { requestId: string; type: 'tool'; tool: string; summary: string; decision: PermissionDecision; outcome: 'ok' | 'error' | 'blocked' }
   | { requestId: string; type: 'done'; message: ChatMessage }
   | { requestId: string; type: 'error'; message: string }
 
@@ -120,4 +150,11 @@ export type AssistantApi = {
   stopAll(): Promise<number>
   onChatEvent(listener: (event: ChatStreamEvent) => void): () => void
   getAuditLog(): Promise<AuditEntry[]>
+  respondApproval(id: string, approved: boolean): Promise<boolean>
+  getCheckpoints(): Promise<CheckpointEntry[]>
+  undoCheckpoint(id: string): Promise<CheckpointEntry[]>
+  listProcesses(): Promise<ProcessInfo[]>
+  readProcess(id: string): Promise<string>
+  startScript(script: string): Promise<ProcessInfo>
+  stopProcess(id: string): Promise<boolean>
 }

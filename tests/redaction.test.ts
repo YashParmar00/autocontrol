@@ -14,3 +14,13 @@ describe('redactSecrets', () => {
     expect(redactSecrets('Authorization: Bearer abcdefghijklmnop123456')).toBe('Authorization: Bearer [REDACTED_TOKEN]')
   })
 })
+
+describe('extra redaction patterns', () => {
+  it('hides tokens, database urls and url credentials', async () => {
+    const { redactSecrets } = await import('../src/main/redaction')
+    expect(redactSecrets('TOKEN=abc12345')).toBe('TOKEN=[REDACTED]')
+    expect(redactSecrets('MONGODB_URI=mongodb+srv://yash:hunter2@cluster0.x.net/db')).not.toContain('hunter2')
+    expect(redactSecrets('connect postgres://admin:s3cret@localhost:5432/app')).toBe('connect postgres://admin:[REDACTED]@localhost:5432/app')
+    expect(redactSecrets('const tokenizer = createTokenizer()')).toBe('const tokenizer = createTokenizer()')
+  })
+})

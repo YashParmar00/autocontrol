@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { BrainCircuit, Eraser, Eye, LoaderCircle, OctagonX, SendHorizontal, ShieldAlert, ShieldCheck, Sparkles, Wrench, Zap } from 'lucide-react'
-import type { AssistantSettings, AutonomyMode, ChatMessage, OllamaStatus, ProjectSummary } from '../../shared/contracts'
+import { Check, BrainCircuit, Eraser, Eye, LoaderCircle, OctagonX, SendHorizontal, ShieldAlert, ShieldCheck, Sparkles, Wrench, Zap } from 'lucide-react'
+import type { ApprovalRequest, AssistantSettings, AutonomyMode, ChatMessage, OllamaStatus, ProjectSummary } from '../../shared/contracts'
 
-type LiveTool = { tool: string; summary: string; decision: string }
+type LiveTool = { tool: string; summary: string; decision: string; outcome: string }
+
+function toolLabel(tool: LiveTool): string {
+  if (tool.decision === 'deny') return ' — blocked in this mode'
+  if (tool.outcome === 'error') return ' — failed'
+  if (tool.decision === 'ask') return tool.outcome === 'ok' ? ' — approved by you' : ' — rejected'
+  return ''
+}
 
 const MODES: Array<{ id: AutonomyMode; label: string; hint: string; icon: typeof Eye }> = [
   { id: 'guide', label: 'Guide', hint: 'Sirf samjhayega, kuch change nahi karega', icon: Eye },
@@ -28,6 +35,30 @@ function MessageBody({ text }: { text: string }) {
   )
 }
 
+function DiffPreview({ text }: { text: string }) {
+  return (
+    <pre className="approval-preview">
+      {text.split('\n').map((line, index) => (
+        <span key={index} className={line.startsWith('+') && !line.startsWith('+++') ? 'diff-add' : line.startsWith('-') && !line.startsWith('---') ? 'diff-del' : line.startsWith('@@') ? 'diff-hunk' : ''}>{line}{'\n'}</span>
+      ))}
+    </pre>
+  )
+}
+
+function ApprovalCard({ approval, onAnswer }: { approval: ApprovalRequest; onAnswer: (approved: boolean) => void }) {
+  return (
+    <div className="approval-card">
+      <div className="approval-head"><ShieldAlert size={14} /> <strong>Approval needed</strong> <code>{approval.summary}</code></div>
+      <DiffPreview text={approval.preview} />
+      <div className="approval-actions">
+        <button className="approve-button" onClick={() => onAnswer(true)}><Check size={14} /> Approve</button>
+        <button className="outline-button" onClick={() => onAnswer(false)}>Reject</button>
+        <span className="approval-hint">5 min mein jawab nahi diya to auto-reject</span>
+      </div>
+    </div>
+  )
+}
+
 export function AssistantView(props: {
   project: ProjectSummary | null
   ollama: OllamaStatus | null
@@ -39,6 +70,7 @@ export function AssistantView(props: {
   const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState('')
   const [liveTools, setLiveTools] = useState<LiveTool[]>([])
+  const [approvals, setApprovals] = useState<ApprovalRequest[]>([])
   const [activeRequest, setActiveRequest] = useState<string | null>(null)
   const [error, setError] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -60,12 +92,14 @@ export function AssistantView(props: {
   useEffect(() => window.devCompanion.onChatEvent((event) => {
     if (event.requestId !== activeRef.current) return
     if (event.type === 'token') setStreaming((current) => current + event.text)
-    else if (event.type === 'tool') setLiveTools((current) => [...current, { tool: event.tool, summary: event.summary, decision: event.decision }])
+    else if (event.type === 'tool') setLiveTools((current) => [...current, { tool: event.tool, summary: event.summary, decision: event.decision, outcome: event.outcome }])
+    else if (event.type === 'approval') setApprovals((current) => [...current, event.approval])
     else {
       if (event.type === 'done') setMessages((current) => [...current, event.message])
       else setError(event.message)
       setStreaming('')
       setLiveTools([])
+      setApprovals([])
       setActiveRequest(null)
     }
   }), [])
@@ -100,6 +134,11 @@ export function AssistantView(props: {
       event.preventDefault()
       void send(draft)
     }
+  }
+
+  async function answerApproval(id: string, approved: boolean) {
+    setApprovals((current) => current.filter((approval) => approval.id !== id))
+    await window.devCompanion.respondApproval(id, approved)
   }
 
   async function changeMode(mode: AutonomyMode) {
@@ -180,12 +219,13 @@ export function AssistantView(props: {
         {activeRequest && (
           <div className="chat-message assistant">
             {liveTools.map((tool, index) => (
-              <div key={index} className={`tool-chip ${tool.decision}`}>
-                {tool.decision === 'allow' ? <Wrench size={11} /> : <ShieldAlert size={11} />} {tool.summary}{tool.decision !== 'allow' ? ` — ${tool.decision === 'ask' ? 'approval needed' : 'blocked'}` : ''}
+              <div key={index} className={`tool-chip ${tool.outcome === 'ok' ? 'ok' : 'bad'}`}>
+                {tool.outcome === 'ok' ? <Wrench size={11} /> : <ShieldAlert size={11} />} {tool.summary}{toolLabel(tool)}
               </div>
             ))}
+            {approvals.map((approval) => <ApprovalCard key={approval.id} approval={approval} onAnswer={(approved) => void answerApproval(approval.id, approved)} />)}
             <div className="chat-bubble">
-              {streaming ? <MessageBody text={streaming} /> : <span className="thinking"><LoaderCircle size={14} className="spin" /> Soch raha hoon…</span>}
+              {streaming ? <MessageBody text={streaming} /> : <span className="thinking"><LoaderCircle size={14} className="spin" /> {approvals.length ? 'Aapke approval ka wait…' : 'Soch raha hoon…'}</span>}
             </div>
           </div>
         )}
