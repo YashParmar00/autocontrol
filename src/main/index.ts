@@ -1,9 +1,11 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
 import { inspectProject } from './project-service'
 import { addTaskNote, getStoreSnapshot, setActiveProject, toggleTaskNote } from './store'
 import { checkOllama } from './ollama-service'
+import { redactSecrets } from './redaction'
 import type { AppInfo, DashboardSnapshot, ProjectSummary } from '../shared/contracts'
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
@@ -13,11 +15,27 @@ function getAppInfo(): AppInfo {
   return { name: app.getName(), version: app.getVersion(), platform: process.platform }
 }
 
+function trustedRendererUrl(): string {
+  if (isDev) return process.env.ELECTRON_RENDERER_URL ?? ''
+  return pathToFileURL(join(import.meta.dirname, '../renderer/index.html')).href
+}
+
+function isTrustedRendererUrl(candidate: string): boolean {
+  const expected = trustedRendererUrl()
+  if (!expected || !candidate) return false
+  if (!isDev) return candidate === expected
+  try {
+    const actualUrl = new URL(candidate)
+    const expectedUrl = new URL(expected)
+    return actualUrl.origin === expectedUrl.origin && actualUrl.pathname === expectedUrl.pathname
+  } catch {
+    return false
+  }
+}
+
 function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
   const frameUrl = event.senderFrame?.url ?? ''
-  const allowed = isDev
-    ? frameUrl.startsWith(process.env.ELECTRON_RENDERER_URL ?? 'http://localhost:')
-    : frameUrl.startsWith('file://')
+  const allowed = Boolean(event.senderFrame?.isMainFrame) && isTrustedRendererUrl(frameUrl)
   if (!allowed || !mainWindow || event.sender.id !== mainWindow.webContents.id) {
     throw new Error('Blocked IPC request from an untrusted renderer.')
   }
@@ -58,7 +76,7 @@ function registerIpc(): void {
 
   ipcMain.handle('task:add', async (event, rawText: unknown) => {
     assertTrustedSender(event)
-    const text = z.string().trim().min(2).max(500).parse(rawText)
+    const text = redactSecrets(z.string().trim().min(2).max(500).parse(rawText))
     const stored = await getStoreSnapshot()
     if (!stored.activeProject) throw new Error('Select a project before adding a task note.')
     return addTaskNote(stored.activeProject.path, text)
@@ -86,7 +104,7 @@ function createWindow(): void {
     title: 'Dev Companion',
     show: false,
     webPreferences: {
-      preload: join(import.meta.dirname, '../preload/index.js'),
+      preload: join(import.meta.dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -97,10 +115,7 @@ function createWindow(): void {
   mainWindow.once('ready-to-show', () => mainWindow?.show())
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    const localDevUrl = process.env.ELECTRON_RENDERER_URL
-    if (localDevUrl && url.startsWith(localDevUrl)) return
-    if (url.startsWith('file://')) return
-    event.preventDefault()
+    if (!isTrustedRendererUrl(url)) event.preventDefault()
   })
 
   if (isDev) {

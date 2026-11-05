@@ -18,3 +18,7 @@
 6. Do not persist secrets in task memory, prompts, logs, crash reports, or analytics.
 7. Maintain a visible activity timeline, per-tool approval, pause, and emergency stop.
 8. Keep irreversible/external actions (payment, send, deploy, delete, publish) behind fresh confirmation.
+
+## Electron preload format
+
+The main process is built as ESM. The preload is emitted as a single CommonJS `.cjs` bundle because Electron's sandboxed preload loader does not support ESM imports. The preload stays sandboxed and exposes only the narrow `contextBridge` API above.

@@ -8,7 +8,7 @@ A local-first AI development companion for Windows. The product goal is to under
 - Hardened renderer boundary: `contextIsolation`, `sandbox`, `nodeIntegration: false`, strict IPC allow-list, sender validation, and navigation/window-open restrictions.
 - User-selected project folder scanning (no background drive crawling).
 - Project metadata and file tree inspection, with common build folders and secret-like files excluded.
-- Local task notes persisted under Electron's per-user app data directory (`memory.json`). The store is intentionally small and replaceable; SQLite migration is planned before richer memory/search is introduced.
+- Local task notes persisted in a SQLite database under Electron's per-user app data directory (`memory.sqlite`). The database is local-only and contains project metadata and notes, not credentials.
 - Ollama health check against `127.0.0.1:11434` only. It reads model names, never prompts a model.
 - No screen capture, browser control, terminal execution, credential access, or autonomous actions in this starter.
 
@@ -46,7 +46,7 @@ npm run package:win
 
 ## Project scan security
 
-The first version only scans a folder that the user explicitly selects. It does not follow symbolic links and skips `node_modules`, `.git`, build outputs, `.env*`, private-key extensions, and common credential-like filenames. It reads only the root `package.json` for dependency and script-name detection; it does not read `.env` or source-code contents.
+The first version only scans a folder that the user explicitly selects. It does not follow symbolic links and skips `node_modules`, `.git`, build outputs, `.env*`, private-key extensions, and common credential-like filenames. It reads only the root `package.json` for dependency and script-name detection; it does not read `.env` or source-code contents. Task notes are scrubbed for common named secrets, provider-token formats, bearer tokens, and private-key blocks before they are written to SQLite. This is a best-effort filter, not a reason to paste credentials into notes.
 
 This is a conservative baseline, not a guarantee that every possible secret naming convention is detected. Do not add real secrets to the repository.
 
@@ -60,7 +60,7 @@ The connection check calls `GET http://127.0.0.1:11434/api/tags`. It does not us
 2. **Context intelligence:** user-enabled screen snapshots, Windows UI Automation, and a Chrome extension with explicit per-site permissions.
 3. **Agent runtime:** task planner, policy-gated tools, code diffs, sandboxed terminal runner, and verification.
 4. **Security hardening:** Windows Credential Manager/DPAPI integration, secret redaction, audit history, Git checkpoints, and emergency stop.
-5. **Memory upgrade:** SQLite-backed project/task/decision memory with migrations and retrieval.
+5. **Memory upgrade:** schema migrations, decision history, and local retrieval on top of SQLite.
 
 ## Non-negotiable safety rules
 

@@ -19,12 +19,14 @@
     "lucide-react": "^0.468.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "sql.js": "^1.15.2",
     "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
+    "@types/sql.js": "^1.4.11",
     "@vitejs/plugin-react": "^5.0.0",
     "electron": "^45.2.3",
     "electron-builder": "^26.0.12",

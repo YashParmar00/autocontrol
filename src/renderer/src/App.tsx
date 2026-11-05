@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
-  Activity, ArrowDownLeft, ArrowUpRight, BrainCircuit, Check, CheckCircle2,
+  Activity, ArrowUpRight, BrainCircuit, Check, CheckCircle2,
   ChevronDown, Circle, Code2, Command, Folder, FolderOpen, GitBranch,
-  HardDrive, Laptop, ListTodo, LoaderCircle, Monitor, Plus, RefreshCw,
-  ShieldCheck, Sparkles, Terminal, Wifi, WifiOff, X,
+  HardDrive, ListTodo, LoaderCircle, Monitor, Plus, RefreshCw,
+  ShieldCheck, Sparkles, Wifi, WifiOff, X,
 } from 'lucide-react'
-import type { DashboardSnapshot, OllamaStatus, ProjectSummary, TaskNote } from '../../shared/contracts'
+import type { DashboardSnapshot, OllamaStatus, TaskNote } from '../../shared/contracts'
 
 const EMPTY_DASHBOARD: DashboardSnapshot = {
   app: { name: 'Dev Companion', version: '0.1.0', platform: 'win32' },
@@ -18,14 +18,13 @@ function formatDate(value: string): string {
 }
 
 function App() {
-  const [dashboard, setDashboard] = useState(EMPTY_DASHBOARD)
+  const [dashboard, setDashboard] = useState<DashboardSnapshot>(EMPTY_DASHBOARD)
   const [ollama, setOllama] = useState<OllamaStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [noteText, setNoteText] = useState('')
   const [error, setError] = useState('')
   const [showAllFiles, setShowAllFiles] = useState(false)
-  const [activeNav, setActiveNav] = useState('Overview')
 
   const project = dashboard.activeProject
   const notes = useMemo(() => dashboard.notes.filter((note) => !project || note.projectPath === project.path), [dashboard.notes, project])
@@ -76,7 +75,7 @@ function App() {
     } finally { setBusy(false) }
   }
 
-  async function addNote(event: React.FormEvent) {
+  async function addNote(event: FormEvent) {
     event.preventDefault()
     if (!noteText.trim()) return
     setError('')
@@ -106,21 +105,14 @@ function App() {
         </div>
         <div className="nav-label">WORKSPACE</div>
         <nav className="nav-list">
-          {[
-            { name: 'Overview', icon: Activity },
-            { name: 'Project context', icon: Code2 },
-            { name: 'Task memory', icon: ListTodo },
-          ].map(({ name, icon: Icon }) => (
-            <button key={name} className={`nav-item ${activeNav === name ? 'active' : ''}`} onClick={() => setActiveNav(name)}>
-              <Icon size={17} /><span>{name}</span>
-              {name === 'Task memory' && pendingCount > 0 && <span className="nav-count">{pendingCount}</span>}
-            </button>
-          ))}
+          <div className="nav-item active"><Activity size={17} /><span>Overview</span></div>
+          <div className="nav-item nav-planned"><Code2 size={17} /><span>Project context</span><span className="coming-soon">NEXT</span></div>
+          <div className="nav-item nav-planned"><ListTodo size={17} /><span>Task memory</span>{pendingCount > 0 && <span className="nav-count">{pendingCount}</span>}</div>
         </nav>
         <div className="nav-label tools-label">SYSTEM</div>
         <nav className="nav-list">
-          <button className={`nav-item ${activeNav === 'AI runtime' ? 'active' : ''}`} onClick={() => setActiveNav('AI runtime')}><Sparkles size={17} /><span>AI runtime</span></button>
-          <button className={`nav-item ${activeNav === 'Security' ? 'active' : ''}`} onClick={() => setActiveNav('Security')}><ShieldCheck size={17} /><span>Security</span></button>
+          <div className="nav-item nav-planned"><Sparkles size={17} /><span>AI runtime</span><span className="coming-soon">NEXT</span></div>
+          <div className="nav-item nav-planned"><ShieldCheck size={17} /><span>Security</span><span className="coming-soon">NEXT</span></div>
         </nav>
         <div className="sidebar-bottom">
           <div className="privacy-card"><div className="privacy-icon"><ShieldCheck size={16} /></div><div><strong>Local-first by design</strong><span>Project context stays on this device.</span></div></div>
@@ -130,7 +122,7 @@ function App() {
 
       <main className="main-panel">
         <header className="topbar">
-          <div className="breadcrumb"><span>Workspace</span><span className="slash">/</span><strong>{activeNav}</strong></div>
+          <div className="breadcrumb"><span>Workspace</span><span className="slash">/</span><strong>Overview</strong></div>
           <div className="topbar-right"><span className="local-pill"><span className="green-dot" /> LOCAL SESSION</span><span className="topbar-divider" /><div className="version-label">v{dashboard.app.version}</div></div>
         </header>
 

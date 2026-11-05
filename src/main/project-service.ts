@@ -1,6 +1,6 @@
 import { lstat, readFile, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
-import type { ProjectFileEntry, ProjectSummary } from '../shared/contracts'
+import type { ProjectSummary } from '../shared/contracts'
 
 const IGNORED_DIRS = new Set([
   '.git', '.next', '.nuxt', '.turbo', '.vercel', '.yarn', '.idea', '.vscode',
@@ -47,7 +47,10 @@ function packageStack(packageJson: Record<string, unknown>): { stack: string[]; 
 
 async function readPackageJson(root: string): Promise<Record<string, unknown> | null> {
   try {
-    const raw = await readFile(path.join(root, 'package.json'), 'utf8')
+    const manifestPath = path.join(root, 'package.json')
+    const manifestStat = await lstat(manifestPath)
+    if (!manifestStat.isFile() || manifestStat.isSymbolicLink() || manifestStat.size > 256_000) return null
+    const raw = await readFile(manifestPath, 'utf8')
     if (raw.length > 256_000) return null
     const value = JSON.parse(raw)
     return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
