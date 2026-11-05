@@ -3,9 +3,25 @@ const PROVIDER_TOKEN = /\b(?:sk_live|sk_test|rzp_live|rzp_test|ghp|github_pat|xo
 const BEARER_TOKEN = /\b(Bearer)\s+[A-Za-z0-9._~+\/-]{12,}={0,2}/gi
 const PRIVATE_KEY_BLOCK = /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g
 
-/** Scrub common credential patterns before task notes are persisted locally. */
+// Exact values of secrets stored in the local vault. Any text headed for the model,
+// the UI or the database is scrubbed of them, whatever pattern they have.
+let knownSecrets: Array<{ name: string; value: string }> = []
+
+export function setKnownSecrets(secrets: Array<{ name: string; value: string }>): void {
+  knownSecrets = secrets.filter((secret) => secret.value.length >= 4).sort((a, b) => b.value.length - a.value.length)
+}
+
+function redactKnown(value: string): string {
+  let result = value
+  for (const secret of knownSecrets) {
+    if (result.includes(secret.value)) result = result.split(secret.value).join(`[VAULT:${secret.name}]`)
+  }
+  return result
+}
+
+/** Scrub credentials from any text before it reaches the model, the UI or storage. */
 export function redactSecrets(value: string): string {
-  return redactUrlCredentials(value)
+  return redactUrlCredentials(redactKnown(value))
     .replace(SECRET_ASSIGNMENT, (_match, prefix: string, key: string, separator: string) => `${prefix}${key}${separator}[REDACTED]`)
     .replace(PROVIDER_TOKEN, '[REDACTED_TOKEN]')
     .replace(BEARER_TOKEN, '$1 [REDACTED_TOKEN]')

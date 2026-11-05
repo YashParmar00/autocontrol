@@ -14,7 +14,7 @@ type View = 'overview' | 'assistant' | 'terminal' | 'activity'
 const VIEW_TITLES: Record<View, string> = { overview: 'Overview', assistant: 'Assistant', terminal: 'Terminal', activity: 'Security & activity' }
 
 const EMPTY_DASHBOARD: DashboardSnapshot = {
-  app: { name: 'Dev Companion', version: '0.2.0', platform: 'win32' },
+  app: { name: 'Dev Companion', version: '0.5.0', platform: 'win32' },
   activeProject: null,
   notes: [],
 }

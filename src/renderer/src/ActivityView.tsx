@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { History, RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react'
 import type { AuditEntry, CheckpointEntry, OllamaStatus } from '../../shared/contracts'
 import { CapabilitiesPanel } from './CapabilitiesPanel'
+import { VaultPanel } from './VaultPanel'
 
 const POLICY_ROWS: Array<[string, string, string, string]> = [
   ['Project files padhna', 'Allow', 'Allow', 'Allow'],
@@ -46,6 +47,7 @@ export function ActivityView({ ollama }: { ollama: OllamaStatus | null }) {
   return (
     <div className="activity-view">
       <CapabilitiesPanel ollama={ollama} />
+      <VaultPanel />
       <article className="panel">
         <div className="panel-header"><div><h3>Permission policy</h3><p>Har AI action is table se check hota hai. Unknown action = deny.</p></div><div className="panel-icon"><ShieldCheck size={17} /></div></div>
         <table className="policy-table">

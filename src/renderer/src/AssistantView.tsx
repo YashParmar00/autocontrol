@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Camera, Check, BrainCircuit, Eraser, Eye, LoaderCircle, OctagonX, SendHorizontal, ShieldAlert, ShieldCheck, Sparkles, Wrench, Zap } from 'lucide-react'
+import { Camera, Check, BrainCircuit, PictureInPicture2, Volume2, VolumeX, Eraser, Eye, LoaderCircle, OctagonX, SendHorizontal, ShieldAlert, ShieldCheck, Sparkles, Wrench, Zap } from 'lucide-react'
 import type { ApprovalRequest, AssistantSettings, AutonomyMode, ChatMessage, OllamaStatus, ProjectSummary } from '../../shared/contracts'
 
 type LiveTool = { tool: string; summary: string; decision: string; outcome: string }
@@ -63,6 +63,7 @@ export function AssistantView(props: {
   project: ProjectSummary | null
   ollama: OllamaStatus | null
   onRefreshOllama: () => void
+  compact?: boolean
 }) {
   const { project, ollama } = props
   const [settings, setSettings] = useState<AssistantSettings>({ model: null, mode: 'supervised', visionModel: null, screenEnabled: false, browserEnabled: false })
@@ -74,6 +75,7 @@ export function AssistantView(props: {
   const [activeRequest, setActiveRequest] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [attachScreen, setAttachScreen] = useState(false)
+  const [speakingId, setSpeakingId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const activeRef = useRef<string | null>(null)
   activeRef.current = activeRequest
@@ -152,7 +154,23 @@ export function AssistantView(props: {
   }
 
   async function stopAll() {
+    window.speechSynthesis?.cancel()
+    setSpeakingId(null)
     await window.devCompanion.stopAll()
+  }
+
+  /** Offline text-to-speech (Windows voices). Code blocks are skipped. */
+  function speak(message: ChatMessage) {
+    const synth = window.speechSynthesis
+    if (!synth) return
+    if (speakingId === message.id) { synth.cancel(); setSpeakingId(null); return }
+    synth.cancel()
+    const utterance = new SpeechSynthesisUtterance(message.content.replace(/```[\s\S]*?```/g, ' (code) ').slice(0, 4_000))
+    const voices = synth.getVoices()
+    utterance.voice = voices.find((voice) => /hi-IN|en-IN/.test(voice.lang)) ?? voices.find((voice) => voice.lang.startsWith('en')) ?? null
+    utterance.onend = () => setSpeakingId(null)
+    setSpeakingId(message.id)
+    synth.speak(utterance)
   }
 
   async function clearHistory() {
@@ -163,7 +181,7 @@ export function AssistantView(props: {
   const noModels = ollama && (!ollama.connected || !ollama.models.length)
 
   return (
-    <div className="assistant-view">
+    <div className={`assistant-view ${props.compact ? 'compact' : ''}`}>
       <div className="assistant-toolbar">
         <div className="mode-switch" role="radiogroup" aria-label="Autonomy mode">
           {MODES.map(({ id, label, hint, icon: Icon }) => (
@@ -180,6 +198,7 @@ export function AssistantView(props: {
             {ollama?.models.map((model) => <option key={model} value={model}>{model}</option>)}
           </select>
           <button className="outline-button" onClick={() => void clearHistory()} disabled={!!activeRequest || !messages.length} title="Clear this project's chat"><Eraser size={14} /> Clear</button>
+          {!props.compact && <button className="outline-button" onClick={() => void window.devCompanion.toggleFloatingPanel()} title="Floating mini assistant (Ctrl+Shift+Space)"><PictureInPicture2 size={14} /> Mini</button>}
           <button className="stop-button" onClick={() => void stopAll()} title="Emergency stop — aborts every running AI action"><OctagonX size={15} /> STOP</button>
         </div>
       </div>
@@ -216,6 +235,11 @@ export function AssistantView(props: {
           <div key={message.id} className={`chat-message ${message.role}`}>
             {message.toolTrace?.length ? <div className="tool-trace"><Wrench size={11} /> {message.toolTrace.join(' · ')}</div> : null}
             <div className="chat-bubble"><MessageBody text={message.content} /></div>
+            {message.role === 'assistant' && (
+              <button className="speak-button" onClick={() => speak(message)} aria-label={speakingId === message.id ? 'Stop reading' : 'Read aloud'}>
+                {speakingId === message.id ? <VolumeX size={12} /> : <Volume2 size={12} />}
+              </button>
+            )}
           </div>
         ))}
         {activeRequest && (
@@ -243,7 +267,7 @@ export function AssistantView(props: {
           </button>
         )}
         <textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={onKeyDown} rows={2} maxLength={8000}
-          placeholder={settings.model ? 'Kuch bhi poochho… (Enter = send, Shift+Enter = new line)' : 'Pehle Ollama model select karo'} disabled={!settings.model} />
+          placeholder={settings.model ? 'Kuch bhi poochho… (Enter = send · Shift+Enter = new line · Win+H = bol ke likho)' : 'Pehle Ollama model select karo'} disabled={!settings.model} />
         <button type="submit" className="primary-button" disabled={!draft.trim() || !!activeRequest || !settings.model}>
           {activeRequest ? <LoaderCircle size={16} className="spin" /> : <SendHorizontal size={16} />}
         </button>

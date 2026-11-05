@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Dev Companion Bridge",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Lets your local Dev Companion app read the active tab (without passwords) and fill fields you approve.",
   "minimum_chrome_version": "116",
   "permissions": ["tabs", "scripting", "storage", "alarms"],

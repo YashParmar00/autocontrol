@@ -1,32 +1,54 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, safeStorage } from 'electron'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
 import { inspectProject } from './project-service'
 import { checkOllama } from './ollama-service'
-import { redactSecrets } from './redaction'
+import { redactSecrets, setKnownSecrets } from './redaction'
 import { defaultTools, runAgent, type AgentTool } from './agent'
 import { BrowserBridge, createPairingToken, describeTab, type BrowserTabContext } from './browser-bridge'
 import { browserTools, screenTools } from './capability-tools'
 import { describeImage } from './ollama-chat'
 import { captureScreen } from './screen'
+import { Vault, VAULT_NAME } from './vault'
 import { ApprovalBroker } from './approvals'
 import { applyPlannedWrite, undoCheckpoint } from './file-ops'
 import { ProcessManager, SCRIPT_NAME } from './process-manager'
 import { isAutonomyMode } from './permission-engine'
 import {
   addAuditEntry, addChatMessage, addTaskNote, clearChatHistory, getAssistantSettings, getAuditLog,
-  getChatHistory, getLocalSetting, getStoreSnapshot, listCheckpoints, setLocalSetting, setActiveProject, toggleTaskNote, updateAssistantSettings,
+  getChatHistory, getLocalSetting, getStoreSnapshot, listCheckpoints, setLocalSetting, vaultStorage, setActiveProject, toggleTaskNote, updateAssistantSettings,
 } from './store'
 import type { AppInfo, ChatStreamEvent, DashboardSnapshot, ProjectSummary } from '../shared/contracts'
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
 let mainWindow: BrowserWindow | null = null
+let floatingWindow: BrowserWindow | null = null
+const FLOATING_SHORTCUT = 'CommandOrControl+Shift+Space'
+
+function trustedWindows(): BrowserWindow[] {
+  return [mainWindow, floatingWindow].filter((window): window is BrowserWindow => Boolean(window && !window.isDestroyed()))
+}
 /** Every running AI request, so the emergency stop can abort all of them at once. */
 const runningRequests = new Map<string, AbortController>()
 
 function emitChat(event: ChatStreamEvent): void {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('ai:event', event)
+  for (const window of trustedWindows()) window.webContents.send('ai:event', event)
+}
+
+const vault = new Vault({
+  // On Linux without a keyring Electron falls back to a hard-coded key ("basic_text"): treat that as unavailable.
+  isAvailable: () => safeStorage.isEncryptionAvailable() && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
+  encrypt: (plain) => safeStorage.encryptString(plain),
+  decrypt: (cipher) => safeStorage.decryptString(cipher),
+}, vaultStorage)
+
+async function refreshKnownSecrets(): Promise<void> {
+  setKnownSecrets(await vault.allValues())
+}
+
+async function vaultInfo() {
+  return { available: vault.available(), entries: await vault.entries() }
 }
 
 const processes = new ProcessManager()
@@ -74,7 +96,9 @@ function trustedRendererUrl(): string {
 function isTrustedRendererUrl(candidate: string): boolean {
   const expected = trustedRendererUrl()
   if (!expected || !candidate) return false
-  if (!isDev) return candidate === expected
+  // The floating panel loads the same page with a #mini hash.
+  const withoutHash = (value: string) => value.split('#')[0]
+  if (!isDev) return withoutHash(candidate) === withoutHash(expected)
   try {
     const actualUrl = new URL(candidate)
     const expectedUrl = new URL(expected)
@@ -88,7 +112,7 @@ function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
   const frameUrl = event.senderFrame?.url ?? ''
   const isMainFrame = Boolean(event.senderFrame) && event.senderFrame === event.sender.mainFrame
   const allowed = isMainFrame && isTrustedRendererUrl(frameUrl)
-  if (!allowed || !mainWindow || event.sender.id !== mainWindow.webContents.id) {
+  if (!allowed || !trustedWindows().some((window) => window.webContents.id === event.sender.id)) {
     throw new Error('Blocked IPC request from an untrusted renderer.')
   }
 }
@@ -236,11 +260,16 @@ function registerIpc(): void {
             fill: (fields) => bridge.request('fill', { fields }),
             click: (ref) => bridge.request('click', { ref }),
             openUrl: (url) => bridge.request('open_url', { url }),
+            resolveVault: (name) => vault.resolve(name),
           }))
           try {
             const tab = await bridge.request<BrowserTabContext>('get_context')
             extraContext += `## Developer's active Chrome tab (fields marked sensitive have hidden values)\n${redactSecrets(describeTab(tab, 2_500))}\n`
           } catch { /* e.g. chrome:// page */ }
+        }
+        const secretNames = (await vault.entries()).map((entry) => `${entry.name}${entry.env ? ' (also env var in scripts)' : ''}`)
+        if (secretNames.length) {
+          extraContext += `## Developer's local vault (names only — you never see values)\n${secretNames.join(', ')}\nTo type one into a browser field use the value {{vault:NAME}}. Scripts you run receive env-marked secrets as environment variables.\n`
         }
         const result = await runAgent({
           tools,
@@ -254,7 +283,7 @@ function registerIpc(): void {
               await applyPlannedWrite(projectPath, plan, tool)
               wroteFiles = true
             },
-            scriptEnv: async () => ({}),
+            scriptEnv: () => vault.scriptEnv(),
           },
           project: stored.activeProject,
           notes: stored.notes,
@@ -325,7 +354,7 @@ function registerIpc(): void {
     const project = await activeProjectOrThrow()
     const script = z.string().regex(SCRIPT_NAME).parse(rawScript)
     if (!project.scripts.includes(script)) throw new Error(`"${script}" is not a script in package.json.`)
-    const info = processes.start({ cwd: project.path, manager: project.packageManager, script })
+    const info = processes.start({ cwd: project.path, manager: project.packageManager, script, env: await vault.scriptEnv() })
     await addAuditEntry({ category: 'run_command', tool: 'start_process (you)', summary: `${script} → ${info.id}`, decision: 'allow', outcome: 'ok' })
     return info
   })
@@ -349,12 +378,85 @@ function registerIpc(): void {
     return bridgeInfo()
   })
 
+  ipcMain.handle('vault:get', async (event) => {
+    assertTrustedSender(event)
+    return vaultInfo()
+  })
+
+  ipcMain.handle('vault:set', async (event, rawName: unknown, rawValue: unknown, rawEnv: unknown) => {
+    assertTrustedSender(event)
+    const name = z.string().regex(VAULT_NAME).parse(rawName)
+    const value = z.string().min(1).max(8_192).parse(rawValue)
+    await vault.set(name, value, z.boolean().parse(rawEnv))
+    await refreshKnownSecrets()
+    await addAuditEntry({ category: 'read_project', tool: 'vault', summary: `Saved secret ${name}`, decision: 'allow', outcome: 'ok' })
+    return vaultInfo()
+  })
+
+  ipcMain.handle('vault:delete', async (event, rawName: unknown) => {
+    assertTrustedSender(event)
+    const name = z.string().regex(VAULT_NAME).parse(rawName)
+    await vault.remove(name)
+    await refreshKnownSecrets()
+    await addAuditEntry({ category: 'read_project', tool: 'vault', summary: `Deleted secret ${name}`, decision: 'allow', outcome: 'ok' })
+    return vaultInfo()
+  })
+
+  ipcMain.handle('window:toggle-floating', (event) => {
+    assertTrustedSender(event)
+    return toggleFloatingWindow()
+  })
+
   ipcMain.handle('screen:preview', async (event) => {
     assertTrustedSender(event)
     const settings = await getAssistantSettings()
     if (!settings.screenEnabled) throw new Error('Screen awareness is off.')
     return `data:image/jpeg;base64,${await captureScreen(1000)}`
   })
+}
+
+function loadRenderer(window: BrowserWindow, hash = ''): void {
+  if (isDev) void window.loadURL(`${process.env.ELECTRON_RENDERER_URL!}${hash ? `#${hash}` : ''}`)
+  else void window.loadFile(join(import.meta.dirname, '../renderer/index.html'), hash ? { hash } : undefined)
+}
+
+function hardenWindow(window: BrowserWindow): void {
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  window.webContents.on('will-navigate', (event, url) => {
+    if (!isTrustedRendererUrl(url)) event.preventDefault()
+  })
+  // Keep our own windows (chat, approvals, vault) out of screenshots and screen sharing.
+  window.setContentProtection(true)
+}
+
+/** Small always-on-top assistant that stays beside VS Code / Chrome. */
+function toggleFloatingWindow(): boolean {
+  if (floatingWindow && !floatingWindow.isDestroyed()) {
+    if (floatingWindow.isVisible()) { floatingWindow.hide(); return false }
+    floatingWindow.show()
+    return true
+  }
+  floatingWindow = new BrowserWindow({
+    width: 420,
+    height: 640,
+    minWidth: 340,
+    minHeight: 420,
+    alwaysOnTop: true,
+    title: 'Dev Companion — mini',
+    backgroundColor: '#f6f7f9',
+    webPreferences: {
+      preload: join(import.meta.dirname, '../preload/index.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+    },
+  })
+  floatingWindow.setAlwaysOnTop(true, 'floating')
+  hardenWindow(floatingWindow)
+  loadRenderer(floatingWindow, 'mini')
+  floatingWindow.on('closed', () => { floatingWindow = null })
+  return true
 }
 
 function createWindow(): void {
@@ -376,19 +478,9 @@ function createWindow(): void {
   })
 
   mainWindow.once('ready-to-show', () => mainWindow?.show())
-  // Keep our own window (chat, approvals, vault) out of screenshots and screen sharing.
-  mainWindow.setContentProtection(true)
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (!isTrustedRendererUrl(url)) event.preventDefault()
-  })
-
-  if (isDev) {
-    void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL!)
-    mainWindow.webContents.openDevTools({ mode: 'detach' })
-  } else {
-    void mainWindow.loadFile(join(import.meta.dirname, '../renderer/index.html'))
-  }
+  hardenWindow(mainWindow)
+  loadRenderer(mainWindow)
+  if (isDev) mainWindow.webContents.openDevTools({ mode: 'detach' })
 
   mainWindow.on('closed', () => { mainWindow = null })
 }
@@ -398,12 +490,15 @@ app.whenReady().then(() => {
   registerIpc()
   createWindow()
   void loadBridgeToken().then(async () => syncBridge((await getAssistantSettings()).browserEnabled))
+  void refreshKnownSecrets()
+  globalShortcut.register(FLOATING_SHORTCUT, () => { toggleFloatingWindow() })
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
 app.on('before-quit', () => { processes.stopAll(); void bridge.close() })
+app.on('will-quit', () => { globalShortcut.unregisterAll() })
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

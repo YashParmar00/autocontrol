@@ -68,10 +68,10 @@ function fakeBrowser(): BrowserCapability & { filled: unknown[]; clicked: string
   return {
     ...state,
     getContext: async () => tab,
-    fill: async (fields) => { state.filled.push(...fields); return fields.map((field) => ({ ref: field.ref, ok: true })) },
-    click: async (ref) => { state.clicked.push(ref); return { ok: true, text: 'Create Webhook' } },
+    fill: async (fields: Array<{ ref: string }>) => { state.filled.push(...fields); return fields.map((field: { ref: string }) => ({ ref: field.ref, ok: true })) },
+    click: async (ref: string) => { state.clicked.push(ref); return { ok: true, text: 'Create Webhook' } },
     openUrl: async () => ({}),
-    resolveVault: async (name) => (name === 'RAZORPAY_WEBHOOK_SECRET' ? 'whsec_real_value' : null),
+    resolveVault: async (name: string) => (name === 'RAZORPAY_WEBHOOK_SECRET' ? 'whsec_real_value' : null),
     get filledList() { return state.filled },
   } as never
 }

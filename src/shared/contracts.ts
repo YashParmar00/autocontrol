@@ -109,6 +109,15 @@ export type AssistantSettings = {
   browserEnabled: boolean
 }
 
+export type VaultEntry = {
+  name: string
+  /** Also pass to scripts the AI runs as an environment variable. */
+  env: boolean
+  createdAt: string
+}
+
+export type VaultInfo = { available: boolean; entries: VaultEntry[] }
+
 export type BridgeInfo = {
   listening: boolean
   port: number
@@ -176,4 +185,9 @@ export type AssistantApi = {
   rotateBridgeToken(): Promise<BridgeInfo>
   /** Screenshot preview so the developer can see exactly what would be sent. */
   previewScreen(): Promise<string>
+  /** Values are write-only: they are never returned to the UI. */
+  getVault(): Promise<VaultInfo>
+  setVaultSecret(name: string, value: string, env: boolean): Promise<VaultInfo>
+  deleteVaultSecret(name: string): Promise<VaultInfo>
+  toggleFloatingPanel(): Promise<boolean>
 }

@@ -60,6 +60,12 @@ async function getDatabase(): Promise<Database> {
       previous_content TEXT,
       restored INTEGER NOT NULL DEFAULT 0
     )`)
+    database.run(`CREATE TABLE IF NOT EXISTS vault (
+      name TEXT PRIMARY KEY,
+      cipher TEXT NOT NULL,
+      env INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    )`)
     database.run(`CREATE TABLE IF NOT EXISTS audit_log (
       id TEXT PRIMARY KEY,
       at TEXT NOT NULL,
@@ -326,4 +332,27 @@ export async function setLocalSetting(key: string, value: string): Promise<void>
   const database = await getDatabase()
   database.run('INSERT OR REPLACE INTO settings(key, value) VALUES (?, ?)', [key, value])
   await persistSoon()
+}
+
+// ---------------------------------------------------------------------------
+// v0.5.0 — encrypted vault rows (ciphertext only; encryption lives in vault.ts)
+// ---------------------------------------------------------------------------
+
+export const vaultStorage = {
+  async list(): Promise<Array<{ name: string; cipher: string; env: boolean; createdAt: string }>> {
+    const database = await getDatabase()
+    return allRows<{ name: string; cipher: string; env: number; created_at: string }>(database, 'SELECT name, cipher, env, created_at FROM vault ORDER BY name')
+      .map((row) => ({ name: row.name, cipher: row.cipher, env: row.env === 1, createdAt: row.created_at }))
+  },
+  async put(name: string, cipher: string, env: boolean): Promise<void> {
+    const database = await getDatabase()
+    database.run(`INSERT INTO vault(name, cipher, env, created_at) VALUES (?, ?, ?, ?)
+      ON CONFLICT(name) DO UPDATE SET cipher = excluded.cipher, env = excluded.env`, [name, cipher, env ? 1 : 0, new Date().toISOString()])
+    await persistSoon()
+  },
+  async remove(name: string): Promise<void> {
+    const database = await getDatabase()
+    database.run('DELETE FROM vault WHERE name = ?', [name])
+    await persistSoon()
+  },
 }

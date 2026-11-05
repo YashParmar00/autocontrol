@@ -26,6 +26,10 @@ const api: DevCompanionApi = {
   getBridgeInfo: () => ipcRenderer.invoke('bridge:info'),
   rotateBridgeToken: () => ipcRenderer.invoke('bridge:rotate'),
   previewScreen: () => ipcRenderer.invoke('screen:preview'),
+  getVault: () => ipcRenderer.invoke('vault:get'),
+  setVaultSecret: (name, value, env) => ipcRenderer.invoke('vault:set', name, value, env),
+  deleteVaultSecret: (name) => ipcRenderer.invoke('vault:delete', name),
+  toggleFloatingPanel: () => ipcRenderer.invoke('window:toggle-floating'),
   onChatEvent: (listener) => {
     // Only the event payload is forwarded — never the raw IpcRendererEvent.
     const handler = (_event: Electron.IpcRendererEvent, payload: ChatStreamEvent) => listener(payload)

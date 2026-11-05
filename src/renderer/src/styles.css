@@ -254,3 +254,21 @@ button.nav-item:hover:not(.active) { background: #f7f8fa; color: #4a5562; }
 .switch span::before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .15s; }
 .switch input:checked + span { background: #2f7a4f; }
 .switch input:checked + span::before { transform: translateX(16px); }
+
+/* ---- v0.5.0: vault, mini window, voice ---- */
+.vault-form { display: grid; grid-template-columns: 1.2fr 1.2fr auto auto; gap: 8px; align-items: center; margin-bottom: 10px; }
+.vault-form input[type=password], .vault-form input:not([type]) { font: inherit; font-size: 12px; padding: 9px 10px; border: 1px solid #dfe3e7; border-radius: 8px; }
+.vault-form .primary-button { margin-top: 0; }
+.vault-env { font-size: 11px; color: #6b7682; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.speak-button { align-self: flex-start; border: 0; background: transparent; color: #9aa1aa; padding: 2px 4px; border-radius: 5px; }
+.speak-button:hover { color: #3e4853; background: #f0f3f5; }
+body.mini { min-width: 0; }
+.mini-shell { height: 100vh; display: flex; flex-direction: column; padding: 10px; gap: 8px; box-sizing: border-box; }
+.mini-title { font-size: 10px; font-weight: 700; letter-spacing: .6px; color: #8b949f; text-transform: uppercase; }
+.assistant-view.compact { min-height: 0; }
+.assistant-view.compact .mode-option { padding: 6px 8px; font-size: 10px; }
+.assistant-view.compact .model-select { max-width: 120px; }
+.assistant-view.compact .toolbar-right .outline-button { display: none; }
+.assistant-view.compact .chat-scroll { padding: 12px; }
+.assistant-view.compact .chat-message { max-width: 95%; }
+.assistant-view.compact .suggestions { display: none; }
