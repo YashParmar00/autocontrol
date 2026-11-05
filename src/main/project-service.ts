@@ -1,6 +1,6 @@
 import { lstat, readFile, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
-import type { ProjectSummary } from '../shared/contracts'
+import type { ProjectFileEntry, ProjectSummary } from '../shared/contracts'
 
 const IGNORED_DIRS = new Set([
   '.git', '.next', '.nuxt', '.turbo', '.vercel', '.yarn', '.idea', '.vscode',

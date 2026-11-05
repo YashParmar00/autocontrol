@@ -7,7 +7,7 @@
 - [x] Conservative project structure scan
 - [x] Local task memory persistence
 - [x] Ollama loopback health check
-- [ ] Verify install/build on the target Windows PC
+- [ ] Verify install/build on the target Windows PC (not verified in this environment)
 
 ## Milestone 0.2 — richer project context
 - [ ] SQLite migration and project schema

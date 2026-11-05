@@ -15,15 +15,21 @@ A local-first AI development companion for Windows. The product goal is to under
 ## Requirements
 
 - Windows 10/11 x64 (development tested target; not yet validated on this container)
-- Node.js 22.16+ and npm
+- Node.js 22.12+ and npm
 - Ollama is optional. Install it separately to use the local runtime check.
 
 ## Setup
+
+1. Install Node.js 22.12 or newer (64-bit) and npm.
+2. Open this folder in a terminal.
+3. Install dependencies and launch the desktop app:
 
 ```bash
 npm install
 npm run dev
 ```
+
+On Windows, you can also double-click `START-WINDOWS.cmd`. It installs dependencies and starts the app.
 
 Type-check and test:
 
@@ -52,7 +58,7 @@ This is a conservative baseline, not a guarantee that every possible secret nami
 
 ## Ollama
 
-The connection check calls `GET http://127.0.0.1:11434/api/tags`. It does not use cloud AI. No AI inference or chat prompt is wired yet.
+The connection check calls `GET http://127.0.0.1:11434/api/tags`. It does not use cloud AI. No AI inference or chat prompt is wired yet. The dashboard status is only a connectivity check.
 
 ## Architecture roadmap
 
@@ -73,3 +79,12 @@ The connection check calls `GET http://127.0.0.1:11434/api/tags`. It does not us
 ## Repository status
 
 This workspace was initialized as a local Git repository for the starter implementation. A remote GitHub repository still needs to be created from the user's GitHub account, then configured as `origin` and pushed.
+
+### Connect to GitHub
+
+Create an empty repository named `dev-companion` in your GitHub account (do not add a README or license there), then run this from the project folder:
+
+```bash
+git remote add origin https://github.com/<your-username>/dev-companion.git
+git push -u origin main
+```

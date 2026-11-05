@@ -87,8 +87,12 @@ function App() {
   }
 
   async function toggleNote(note: TaskNote) {
-    const updated = await window.devCompanion.toggleTaskNote(note.id)
-    setDashboard((current) => ({ ...current, notes: updated }))
+    try {
+      const updated = await window.devCompanion.toggleTaskNote(note.id)
+      setDashboard((current) => ({ ...current, notes: updated }))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not update the task note.')
+    }
   }
 
   return (
@@ -135,13 +139,13 @@ function App() {
           {error && <div className="error-banner"><X size={16} /><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error"><X size={14} /></button></div>}
 
           <section className="hero-card">
-            <div className="hero-main"><div className="hero-icon"><BrainCircuit size={22} /></div><div><div className="hero-kicker">ASSISTANT STATUS <span className="status-dot" /></div><h2>Ready to understand your project</h2><p>Select a project to build local context. You stay in control of every action.</p></div></div>
-            <div className="hero-side"><div className="mode-label">CURRENT MODE</div><div className="mode-value"><span className="mode-dot" /> Observe &amp; prepare</div><div className="mode-footnote">No autonomous actions enabled</div></div>
+            <div className="hero-main"><div className="hero-icon"><BrainCircuit size={22} /></div><div><div className="hero-kicker">ASSISTANT STATUS <span className="status-dot" /></div><h2>Project context foundation is ready</h2><p>Select a project to start building local context. AI reasoning and desktop actions are not enabled yet.</p></div></div>
+            <div className="hero-side"><div className="mode-label">CURRENT MODE</div><div className="mode-value"><span className="mode-dot" /> Project context only</div><div className="mode-footnote">Screen observation is not enabled yet</div></div>
           </section>
 
           <section className="section-heading"><div><h2>Workspace overview</h2><p>Your local project and runtime at a glance.</p></div><span className="updated-label">{loading ? 'Loading workspace…' : 'Updated just now'}</span></section>
           <section className="metrics-grid">
-            <article className="metric-card"><div className="metric-top"><span>ACTIVE PROJECT</span><FolderOpen size={16} /></div><div className="metric-value project-metric">{project ? project.name : 'No project yet'}</div><div className="metric-foot">{project ? `${project.fileCount} files indexed` : 'Choose a folder to get started'}</div></article>
+            <article className="metric-card"><div className="metric-top"><span>ACTIVE PROJECT</span><FolderOpen size={16} /></div><div className="metric-value project-metric">{project ? project.name : 'No project yet'}</div><div className="metric-foot">{project ? `${project.fileCount} files scanned` : 'Choose a folder to get started'}</div></article>
             <article className="metric-card"><div className="metric-top"><span>DETECTED STACK</span><Code2 size={16} /></div><div className="metric-value">{project?.detectedStack.length ? project.detectedStack.length : '—'}</div><div className="metric-foot">{project?.detectedStack.join(' · ') || 'Waiting for project scan'}</div></article>
             <article className="metric-card"><div className="metric-top"><span>PENDING TASKS</span><ListTodo size={16} /></div><div className="metric-value">{project ? pendingCount : '—'}</div><div className="metric-foot">{project ? `${notes.length} notes in project memory` : 'Select a project first'}</div></article>
             <article className="metric-card"><div className="metric-top"><span>LOCAL AI RUNTIME</span>{ollama?.connected ? <Wifi size={16} /> : <WifiOff size={16} />}</div><div className={`metric-value runtime-value ${ollama?.connected ? 'connected' : ''}`}>{ollama ? (ollama.connected ? 'Connected' : 'Offline') : 'Checking…'}</div><div className="metric-foot">{ollama?.models.length ? `${ollama.models.length} model${ollama.models.length === 1 ? '' : 's'} available` : 'Ollama · 127.0.0.1:11434'}</div></article>
@@ -149,7 +153,7 @@ function App() {
 
           <section className="content-grid">
             <article className="panel project-panel">
-              <div className="panel-header"><div><h3>Project context</h3><p>Understand the codebase without sharing screenshots.</p></div><div className="panel-icon"><Folder size={17} /></div></div>
+              <div className="panel-header"><div><h3>Project context</h3><p>Map project structure and key stack metadata.</p></div><div className="panel-icon"><Folder size={17} /></div></div>
               {project ? (
                 <>
                   <div className="selected-project"><div className="project-icon"><Code2 size={18} /></div><div className="selected-project-copy"><strong>{project.name}</strong><span title={project.path}>{project.path}</span></div><span className="indexed-badge"><CheckCircle2 size={12} /> Scanned</span></div>
