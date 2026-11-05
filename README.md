@@ -2,7 +2,25 @@
 
 A local-first AI development companion for Windows. The product goal is to understand the developer's active project and workflow, keep useful context, and perform approved work while the developer remains in control.
 
-## Current implementation (0.1.0)
+## What's new in 0.2.0 — AI Brain
+
+- **Assistant** tab: chat with a local Ollama model that already knows your project (no screenshots / pasting).
+- AI reads files itself with read-only tools (`list_files`, `read_file`, `search_code`); `.env`, keys and credentials are never shared.
+- Guide / Supervised / Autonomous modes, emergency **STOP**, and an audit log of every AI action.
+
+### Quick start with AI
+
+```bash
+# 1. Install Ollama from https://ollama.com and pull a model
+ollama pull qwen3:4b        # 8 GB RAM: qwen3:1.7b or llama3.2:3b are lighter
+# 2. Run the app
+npm install
+npm run dev
+```
+
+Select your project folder on **Overview**, then open **Assistant**. Tool-calling models (qwen3, llama3.1+, llama3.2) can browse your code; other models still get the automatic project context.
+
+## Foundation (0.1.0)
 
 - Electron desktop shell with a React + TypeScript renderer.
 - Hardened renderer boundary: `contextIsolation`, `sandbox`, `nodeIntegration: false`, strict IPC allow-list, sender validation, and navigation/window-open restrictions.

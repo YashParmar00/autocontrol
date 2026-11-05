@@ -3,13 +3,24 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
 import { inspectProject } from './project-service'
-import { addTaskNote, getStoreSnapshot, setActiveProject, toggleTaskNote } from './store'
 import { checkOllama } from './ollama-service'
 import { redactSecrets } from './redaction'
-import type { AppInfo, DashboardSnapshot, ProjectSummary } from '../shared/contracts'
+import { runAgent } from './agent'
+import { isAutonomyMode } from './permission-engine'
+import {
+  addAuditEntry, addChatMessage, addTaskNote, clearChatHistory, getAssistantSettings, getAuditLog,
+  getChatHistory, getStoreSnapshot, setActiveProject, toggleTaskNote, updateAssistantSettings,
+} from './store'
+import type { AppInfo, ChatStreamEvent, DashboardSnapshot, ProjectSummary } from '../shared/contracts'
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
 let mainWindow: BrowserWindow | null = null
+/** Every running AI request, so the emergency stop can abort all of them at once. */
+const runningRequests = new Map<string, AbortController>()
+
+function emitChat(event: ChatStreamEvent): void {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('ai:event', event)
+}
 
 function getAppInfo(): AppInfo {
   return { name: app.getName(), version: app.getVersion(), platform: process.platform }
@@ -35,7 +46,8 @@ function isTrustedRendererUrl(candidate: string): boolean {
 
 function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
   const frameUrl = event.senderFrame?.url ?? ''
-  const allowed = Boolean(event.senderFrame?.isMainFrame) && isTrustedRendererUrl(frameUrl)
+  const isMainFrame = Boolean(event.senderFrame) && event.senderFrame === event.sender.mainFrame
+  const allowed = isMainFrame && isTrustedRendererUrl(frameUrl)
   if (!allowed || !mainWindow || event.sender.id !== mainWindow.webContents.id) {
     throw new Error('Blocked IPC request from an untrusted renderer.')
   }
@@ -91,6 +103,99 @@ function registerIpc(): void {
   ipcMain.handle('ollama:check', async (event) => {
     assertTrustedSender(event)
     return checkOllama()
+  })
+
+  ipcMain.handle('assistant:get-settings', async (event) => {
+    assertTrustedSender(event)
+    return getAssistantSettings()
+  })
+
+  ipcMain.handle('assistant:update-settings', async (event, rawPatch: unknown) => {
+    assertTrustedSender(event)
+    const patch = z.object({
+      model: z.string().trim().min(1).max(200).regex(/^[\w.:/-]+$/).nullable().optional(),
+      mode: z.string().refine(isAutonomyMode).optional(),
+    }).strict().parse(rawPatch)
+    const before = await getAssistantSettings()
+    const after = await updateAssistantSettings({ model: patch.model, mode: isAutonomyMode(patch.mode) ? patch.mode : undefined })
+    if (patch.mode && before.mode !== after.mode) {
+      await addAuditEntry({ category: 'read_project', tool: 'mode_change', summary: `Mode ${before.mode} → ${after.mode}`, decision: 'allow', outcome: 'ok' })
+    }
+    return after
+  })
+
+  ipcMain.handle('assistant:history', async (event) => {
+    assertTrustedSender(event)
+    const stored = await getStoreSnapshot()
+    return getChatHistory(stored.activeProject?.path ?? null)
+  })
+
+  ipcMain.handle('assistant:clear-history', async (event) => {
+    assertTrustedSender(event)
+    const stored = await getStoreSnapshot()
+    await clearChatHistory(stored.activeProject?.path ?? null)
+  })
+
+  ipcMain.handle('assistant:audit', async (event) => {
+    assertTrustedSender(event)
+    return getAuditLog()
+  })
+
+  ipcMain.handle('assistant:stop-all', async (event) => {
+    assertTrustedSender(event)
+    const count = runningRequests.size
+    for (const controller of runningRequests.values()) controller.abort()
+    runningRequests.clear()
+    if (count) await addAuditEntry({ category: 'read_project', tool: 'emergency_stop', summary: `Stopped ${count} running request(s)`, decision: 'allow', outcome: 'ok' })
+    return count
+  })
+
+  ipcMain.handle('assistant:send', async (event, rawText: unknown) => {
+    assertTrustedSender(event)
+    const text = z.string().trim().min(1).max(8_000).parse(rawText)
+    const settings = await getAssistantSettings()
+    if (!settings.model) throw new Error('Pehle ek local model select karo (Ollama).')
+    const stored = await getStoreSnapshot()
+    const projectPath = stored.activeProject?.path ?? null
+    const history = await getChatHistory(projectPath, 24)
+    const userMessage = await addChatMessage(projectPath, 'user', redactSecrets(text))
+
+    const requestId = crypto.randomUUID()
+    const controller = new AbortController()
+    runningRequests.set(requestId, controller)
+
+    void (async () => {
+      try {
+        const result = await runAgent({
+          project: stored.activeProject,
+          notes: stored.notes,
+          mode: settings.mode,
+          model: settings.model!,
+          history,
+          userMessage: userMessage.content,
+          signal: controller.signal,
+          onToken: (token) => emitChat({ requestId, type: 'token', text: token }),
+          onTool: (record) => {
+            emitChat({ requestId, type: 'tool', tool: record.tool, summary: record.summary, decision: record.decision })
+            void addAuditEntry(record)
+          },
+        })
+        const saved = await addChatMessage(projectPath, 'assistant', result.content || '(empty answer)', result.toolTrace)
+        emitChat({ requestId, type: 'done', message: saved })
+      } catch (error) {
+        const aborted = controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')
+        const message = aborted
+          ? 'Stopped.'
+          : error instanceof TypeError
+            ? 'Ollama se connect nahi ho paaya. Ollama app start karo, phir retry karo.'
+            : error instanceof Error ? error.message : 'AI request failed.'
+        emitChat({ requestId, type: 'error', message })
+      } finally {
+        runningRequests.delete(requestId)
+      }
+    })()
+
+    return requestId
   })
 }
 

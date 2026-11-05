@@ -3,7 +3,7 @@ import initSqlJs from 'sql.js'
 import { createRequire } from 'node:module'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { ProjectSummary, TaskNote } from '../shared/contracts'
+import type { AssistantSettings, AuditEntry, AutonomyMode, ChatMessage, ProjectSummary, TaskNote } from '../shared/contracts'
 
 const require = createRequire(import.meta.url)
 type Database = InstanceType<Awaited<ReturnType<typeof initSqlJs>>['Database']>
@@ -42,6 +42,24 @@ async function getDatabase(): Promise<Database> {
       FOREIGN KEY(project_path) REFERENCES projects(path) ON DELETE CASCADE
     )`)
     database.run('CREATE INDEX IF NOT EXISTS idx_task_notes_project_created ON task_notes(project_path, created_at DESC)')
+    database.run(`CREATE TABLE IF NOT EXISTS chat_messages (
+      id TEXT PRIMARY KEY,
+      project_path TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+      content TEXT NOT NULL,
+      tool_trace TEXT,
+      created_at TEXT NOT NULL
+    )`)
+    database.run('CREATE INDEX IF NOT EXISTS idx_chat_project_created ON chat_messages(project_path, created_at)')
+    database.run(`CREATE TABLE IF NOT EXISTS audit_log (
+      id TEXT PRIMARY KEY,
+      at TEXT NOT NULL,
+      category TEXT NOT NULL,
+      tool TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      decision TEXT NOT NULL,
+      outcome TEXT NOT NULL
+    )`)
     return database
   })()
   return databasePromise
@@ -152,4 +170,94 @@ export async function toggleTaskNote(id: string): Promise<TaskNote[]> {
     createdAt: row.created_at,
     completed: row.completed === 1,
   }))
+}
+
+// ---------------------------------------------------------------------------
+// v0.2.0 — assistant settings, chat history, audit log
+// ---------------------------------------------------------------------------
+
+const NO_PROJECT_KEY = '__no_project__'
+
+function getSetting(database: Database, key: string): string | null {
+  return firstRow<{ value: string }>(database, 'SELECT value FROM settings WHERE key = ?', [key])?.value ?? null
+}
+
+export async function getAssistantSettings(): Promise<AssistantSettings> {
+  const database = await getDatabase()
+  const mode = getSetting(database, 'assistant_mode')
+  return {
+    model: getSetting(database, 'assistant_model'),
+    mode: mode === 'guide' || mode === 'autonomous' ? mode : 'supervised',
+  }
+}
+
+export async function updateAssistantSettings(patch: { model?: string | null; mode?: AutonomyMode }): Promise<AssistantSettings> {
+  const database = await getDatabase()
+  if (patch.model !== undefined) {
+    if (patch.model) database.run('INSERT OR REPLACE INTO settings(key, value) VALUES (?, ?)', ['assistant_model', patch.model])
+    else database.run('DELETE FROM settings WHERE key = ?', ['assistant_model'])
+  }
+  if (patch.mode) database.run('INSERT OR REPLACE INTO settings(key, value) VALUES (?, ?)', ['assistant_mode', patch.mode])
+  await persistSoon()
+  return getAssistantSettings()
+}
+
+export async function getChatHistory(projectPath: string | null, limit = 100): Promise<ChatMessage[]> {
+  const database = await getDatabase()
+  const rows = allRows<{ id: string; project_path: string; role: 'user' | 'assistant'; content: string; tool_trace: string | null; created_at: string }>(
+    database,
+    `SELECT * FROM (SELECT id, project_path, role, content, tool_trace, created_at FROM chat_messages
+      WHERE project_path = ? ORDER BY created_at DESC LIMIT ?) ORDER BY created_at ASC`,
+    [projectPath ?? NO_PROJECT_KEY, limit],
+  )
+  return rows.map((row) => ({
+    id: row.id,
+    projectPath: row.project_path,
+    role: row.role,
+    content: row.content,
+    createdAt: row.created_at,
+    toolTrace: row.tool_trace ? JSON.parse(row.tool_trace) as string[] : undefined,
+  }))
+}
+
+export async function addChatMessage(projectPath: string | null, role: 'user' | 'assistant', content: string, toolTrace?: string[]): Promise<ChatMessage> {
+  const database = await getDatabase()
+  const message: ChatMessage = {
+    id: crypto.randomUUID(),
+    projectPath: projectPath ?? NO_PROJECT_KEY,
+    role,
+    content,
+    createdAt: new Date().toISOString(),
+    toolTrace: toolTrace?.length ? toolTrace : undefined,
+  }
+  database.run(
+    'INSERT INTO chat_messages(id, project_path, role, content, tool_trace, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [message.id, message.projectPath, role, content, message.toolTrace ? JSON.stringify(message.toolTrace) : null, message.createdAt],
+  )
+  await persistSoon()
+  return message
+}
+
+export async function clearChatHistory(projectPath: string | null): Promise<void> {
+  const database = await getDatabase()
+  database.run('DELETE FROM chat_messages WHERE project_path = ?', [projectPath ?? NO_PROJECT_KEY])
+  await persistSoon()
+}
+
+export async function addAuditEntry(entry: Omit<AuditEntry, 'id' | 'at'>): Promise<AuditEntry> {
+  const database = await getDatabase()
+  const full: AuditEntry = { id: crypto.randomUUID(), at: new Date().toISOString(), ...entry }
+  database.run(
+    'INSERT INTO audit_log(id, at, category, tool, summary, decision, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [full.id, full.at, full.category, full.tool, full.summary, full.decision, full.outcome],
+  )
+  // Keep the log bounded.
+  database.run('DELETE FROM audit_log WHERE id NOT IN (SELECT id FROM audit_log ORDER BY at DESC LIMIT 1000)')
+  await persistSoon()
+  return full
+}
+
+export async function getAuditLog(limit = 200): Promise<AuditEntry[]> {
+  const database = await getDatabase()
+  return allRows<AuditEntry>(database, 'SELECT id, at, category, tool, summary, decision, outcome FROM audit_log ORDER BY at DESC LIMIT ?', [limit])
 }

@@ -6,9 +6,14 @@ import {
   ShieldCheck, Sparkles, Wifi, WifiOff, X,
 } from 'lucide-react'
 import type { DashboardSnapshot, OllamaStatus, TaskNote } from '../../shared/contracts'
+import { AssistantView } from './AssistantView'
+import { ActivityView } from './ActivityView'
+
+type View = 'overview' | 'assistant' | 'activity'
+const VIEW_TITLES: Record<View, string> = { overview: 'Overview', assistant: 'Assistant', activity: 'Security & activity' }
 
 const EMPTY_DASHBOARD: DashboardSnapshot = {
-  app: { name: 'Dev Companion', version: '0.1.0', platform: 'win32' },
+  app: { name: 'Dev Companion', version: '0.2.0', platform: 'win32' },
   activeProject: null,
   notes: [],
 }
@@ -25,6 +30,7 @@ function App() {
   const [noteText, setNoteText] = useState('')
   const [error, setError] = useState('')
   const [showAllFiles, setShowAllFiles] = useState(false)
+  const [view, setView] = useState<View>('overview')
 
   const project = dashboard.activeProject
   const notes = useMemo(() => dashboard.notes.filter((note) => !project || note.projectPath === project.path), [dashboard.notes, project])
@@ -109,14 +115,13 @@ function App() {
         </div>
         <div className="nav-label">WORKSPACE</div>
         <nav className="nav-list">
-          <div className="nav-item active"><Activity size={17} /><span>Overview</span></div>
-          <div className="nav-item nav-planned"><Code2 size={17} /><span>Project context</span><span className="coming-soon">NEXT</span></div>
-          <div className="nav-item nav-planned"><ListTodo size={17} /><span>Task memory</span>{pendingCount > 0 && <span className="nav-count">{pendingCount}</span>}</div>
+          <button className={`nav-item ${view === 'overview' ? 'active' : ''}`} onClick={() => setView('overview')}><Activity size={17} /><span>Overview</span>{pendingCount > 0 && <span className="nav-count">{pendingCount}</span>}</button>
+          <button className={`nav-item ${view === 'assistant' ? 'active' : ''}`} onClick={() => setView('assistant')}><Sparkles size={17} /><span>Assistant</span><span className="coming-soon live">NEW</span></button>
         </nav>
         <div className="nav-label tools-label">SYSTEM</div>
         <nav className="nav-list">
-          <div className="nav-item nav-planned"><Sparkles size={17} /><span>AI runtime</span><span className="coming-soon">NEXT</span></div>
-          <div className="nav-item nav-planned"><ShieldCheck size={17} /><span>Security</span><span className="coming-soon">NEXT</span></div>
+          <button className={`nav-item ${view === 'activity' ? 'active' : ''}`} onClick={() => setView('activity')}><ShieldCheck size={17} /><span>Security & activity</span></button>
+          <div className="nav-item nav-planned"><Monitor size={17} /><span>Screen awareness</span><span className="coming-soon">NEXT</span></div>
         </nav>
         <div className="sidebar-bottom">
           <div className="privacy-card"><div className="privacy-icon"><ShieldCheck size={16} /></div><div><strong>Local-first by design</strong><span>Project context stays on this device.</span></div></div>
@@ -126,11 +131,13 @@ function App() {
 
       <main className="main-panel">
         <header className="topbar">
-          <div className="breadcrumb"><span>Workspace</span><span className="slash">/</span><strong>Overview</strong></div>
+          <div className="breadcrumb"><span>Workspace</span><span className="slash">/</span><strong>{VIEW_TITLES[view]}</strong></div>
           <div className="topbar-right"><span className="local-pill"><span className="green-dot" /> LOCAL SESSION</span><span className="topbar-divider" /><div className="version-label">v{dashboard.app.version}</div></div>
         </header>
 
-        <div className="page-content">
+        {view === 'assistant' && <div className="page-content assistant-page"><AssistantView project={project} ollama={ollama} onRefreshOllama={() => void refreshOllama()} /></div>}
+        {view === 'activity' && <div className="page-content"><ActivityView /></div>}
+        <div className="page-content" hidden={view !== 'overview'}>
           <section className="welcome-row">
             <div><div className="eyebrow">YOUR DEVELOPMENT WORKSPACE</div><h1>Good to have you here.</h1><p>Keep building. I’ll keep the project context close.</p></div>
             <button className="secondary-button" onClick={refreshProject} disabled={!project || busy}><RefreshCw size={15} className={busy ? 'spin' : ''} /> Refresh context</button>
@@ -139,8 +146,8 @@ function App() {
           {error && <div className="error-banner"><X size={16} /><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error"><X size={14} /></button></div>}
 
           <section className="hero-card">
-            <div className="hero-main"><div className="hero-icon"><BrainCircuit size={22} /></div><div><div className="hero-kicker">ASSISTANT STATUS <span className="status-dot" /></div><h2>Project context foundation is ready</h2><p>Select a project to start building local context. AI reasoning and desktop actions are not enabled yet.</p></div></div>
-            <div className="hero-side"><div className="mode-label">CURRENT MODE</div><div className="mode-value"><span className="mode-dot" /> Project context only</div><div className="mode-footnote">Screen observation is not enabled yet</div></div>
+            <div className="hero-main"><div className="hero-icon"><BrainCircuit size={22} /></div><div><div className="hero-kicker">ASSISTANT STATUS <span className="status-dot" /></div><h2>{ollama?.connected ? 'Local AI brain is online' : 'Project context is ready — start Ollama for AI'}</h2><p>Assistant project files khud padhta hai (secrets ke bina). Screen observation aur actions agle milestone mein.</p><button className="hero-cta" onClick={() => setView('assistant')}>Open assistant <ArrowUpRight size={13} /></button></div></div>
+            <div className="hero-side"><div className="mode-label">CURRENT MODE</div><div className="mode-value"><span className="mode-dot" /> Read-only AI tools</div><div className="mode-footnote">Every action is permission-checked</div></div>
           </section>
 
           <section className="section-heading"><div><h2>Workspace overview</h2><p>Your local project and runtime at a glance.</p></div><span className="updated-label">{loading ? 'Loading workspace…' : 'Updated just now'}</span></section>
@@ -185,7 +192,7 @@ function App() {
                 {!ollama?.connected && <div className="runtime-help">Start the Ollama app, then check again. No cloud AI calls are made by this check.</div>}
               </article>
 
-              <article className="safety-panel"><div className="safety-title"><ShieldCheck size={16} /><strong>Safety boundaries are on</strong></div><p>Secrets are excluded from the project scan. This starter cannot click, type, submit forms, or run shell commands.</p><div className="safety-footer"><span><CheckCircle2 size={13} /> Local project scan</span><span><CheckCircle2 size={13} /> Human-controlled</span></div></article>
+              <article className="safety-panel"><div className="safety-title"><ShieldCheck size={16} /><strong>Safety boundaries are on</strong></div><p>Secrets project scan aur AI context dono se bahar hain. AI abhi sirf files padh sakta hai — click, type, form submit ya shell commands nahi.</p><div className="safety-footer"><span><CheckCircle2 size={13} /> Local project scan</span><span><CheckCircle2 size={13} /> Human-controlled</span></div></article>
             </div>
           </section>
           <footer className="page-footer"><span>DEV COMPANION · LOCAL-FIRST DEVELOPMENT ASSISTANT</span><span><Monitor size={12} /> Running on this device</span></footer>
